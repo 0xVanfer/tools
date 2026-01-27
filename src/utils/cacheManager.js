@@ -163,7 +163,8 @@ export function setName(address, name, chainId = '1') {
 
 /**
  * Get cached name for an address with priority lookup.
- * Priority: global (chainId 0) -> specific chainId
+ * Priority: customName > symbol > name
+ * Within each type: global (chainId 0) -> specific chainId
  * @param {string} chainId - The chain ID
  * @param {string} address - The contract address
  * @returns {string|null} Cached name or null if not found
@@ -172,14 +173,19 @@ export function getCachedName(chainId, address) {
   if (!address) return null
   const addr = normalizeAddress(address)
   
-  // Check global (chainId 0) first
   const globalCache = getContractCache(addr, GLOBAL_CHAIN_ID)
-  if (globalCache?.customName) return globalCache.customName
-  if (globalCache?.name) return globalCache.name
-  
-  // Then check chain-specific
   const chainCache = getContractCache(addr, chainId)
+  
+  // Priority 1: customName (global first, then chain-specific)
+  if (globalCache?.customName) return globalCache.customName
   if (chainCache?.customName) return chainCache.customName
+  
+  // Priority 2: symbol (global first, then chain-specific)
+  if (globalCache?.symbol) return globalCache.symbol
+  if (chainCache?.symbol) return chainCache.symbol
+  
+  // Priority 3: name (global first, then chain-specific)
+  if (globalCache?.name) return globalCache.name
   if (chainCache?.name) return chainCache.name
   
   return null
