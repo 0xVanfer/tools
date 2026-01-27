@@ -1,0 +1,1 @@
+function r(){return window.ethers}function s(t){return!t||typeof t!="string"?!1:/^0x[a-fA-F0-9]{40}$/i.test(t)}function n(t){const e=r();if(!e)throw new Error("ethers.js not loaded");return e.utils.getAddress(t)}export{r as g,s as i,n as t};
