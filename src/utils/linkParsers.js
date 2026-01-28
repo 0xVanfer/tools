@@ -5,11 +5,10 @@
  * - Etherscan and compatible block explorers (BSCScan, Arbiscan, etc.)
  * - Tenderly VNet simulations (testnet support removed)
  * - Safe transaction service
- * 
- * Based on reference/payload/js/parsers/etherscan.js
  */
 
 import { EXPLORER_CHAIN_MAP as chainsExplorerMap, chains } from './chains.js'
+import { buildApiUrl } from './core/etherscan.js'
 
 // ============================================================================
 // ETHERSCAN PARSER
@@ -20,48 +19,6 @@ import { EXPLORER_CHAIN_MAP as chainsExplorerMap, chains } from './chains.js'
  * This is now generated dynamically from the chains config
  */
 export const EXPLORER_CHAIN_MAP = chainsExplorerMap
-
-/**
- * Etherscan API keys for rate limiting bypass.
- * Rotates through keys on each request.
- */
-const ETHERSCAN_API_KEYS = [
-  'B74HQUR15VESEHDE1HWQSFF6HGDDJ8C9RH',
-  '69TECUX4UTVCG19HPW6SRTUW5YHT1J8JZX',
-  '6JEUZGXV6NCGQEMKSWEGI46MJRK1QDWJ8C'
-]
-
-let currentApiKeyIndex = 0
-
-function getNextApiKey() {
-  const key = ETHERSCAN_API_KEYS[currentApiKeyIndex]
-  currentApiKeyIndex = (currentApiKeyIndex + 1) % ETHERSCAN_API_KEYS.length
-  return key
-}
-
-/**
- * Chain IDs that use Routescan API instead of Etherscan V2 API.
- */
-const ROUTESCAN_CHAINS = ['9745']
-
-/**
- * Check if a chain uses Routescan API.
- */
-function isRoutescanChain(chainId) {
-  return ROUTESCAN_CHAINS.includes(String(chainId))
-}
-
-/**
- * Get the API URL for a given chain.
- * Uses Etherscan V2 API for most chains, Routescan API for specific chains.
- */
-function getApiUrl(chainId) {
-  const normalizedChainId = String(chainId)
-  if (isRoutescanChain(normalizedChainId)) {
-    return `https://api.routescan.io/v2/network/mainnet/evm/${normalizedChainId}/etherscan/api`
-  }
-  return 'https://api.etherscan.io/v2/api'
-}
 
 /**
  * Check if URL is from a supported block explorer
@@ -142,17 +99,14 @@ export async function parseEtherscanLink(url) {
     return { success: false, chainId, error: 'Could not extract transaction hash from URL' }
   }
   
-  const apiUrl = getApiUrl(chainId)
-  const isRoutescan = isRoutescanChain(chainId)
-  
   try {
-    const apiKey = getNextApiKey()
-    // Routescan API doesn't need chainid parameter (it's in the URL path)
-    const fetchUrl = isRoutescan
-      ? `${apiUrl}?module=proxy&action=eth_getTransactionByHash&txhash=${txHash}&apikey=${apiKey}`
-      : `${apiUrl}?chainid=${chainId}&module=proxy&action=eth_getTransactionByHash&txhash=${txHash}&apikey=${apiKey}`
+    const fetchUrl = buildApiUrl(chainId, {
+      module: 'proxy',
+      action: 'eth_getTransactionByHash',
+      txhash: txHash
+    })
     
-    console.debug('[etherscan] Fetching transaction', { chainId, txHash, apiUrl })
+    console.debug('[etherscan] Fetching transaction', { chainId, txHash })
     
     const response = await fetch(fetchUrl)
     if (!response.ok) {

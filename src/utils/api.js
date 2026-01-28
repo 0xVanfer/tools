@@ -3,59 +3,15 @@
  */
 
 import { setItemWithExpiry, getItemWithExpiry } from './storage.js'
+import { EXPLORER_CHAIN_MAP } from './chains.js'
+import {
+  getNextApiKey,
+  isRoutescanChain,
+  getEtherscanApiUrl,
+  fetchFromEtherscan,
+} from './core/etherscan.js'
 
 const CACHE_TTL = 1000 * 60 * 60 // 1 hour
-
-// Etherscan V2 API keys for rotation
-const ETHERSCAN_API_KEYS = [
-  'B74HQUR15VESEHDE1HWQSFF6HGDDJ8C9RH',
-  '69TECUX4UTVCG19HPW6SRTUW5YHT1J8JZX',
-  '6JEUZGXV6NCGQEMKSWEGI46MJRK1QDWJ8C'
-]
-let apiKeyIndex = 0
-
-function getNextApiKey() {
-  const key = ETHERSCAN_API_KEYS[apiKeyIndex]
-  apiKeyIndex = (apiKeyIndex + 1) % ETHERSCAN_API_KEYS.length
-  return key
-}
-
-// Explorer domain to chain ID mapping (matching reference)
-const EXPLORER_CHAIN_MAP = {
-  'etherscan.io': '1',
-  'optimistic.etherscan.io': '10',
-  'bscscan.com': '56',
-  'gnosisscan.io': '100',
-  'polygonscan.com': '137',
-  'sonicscan.org': '146',
-  'ftmscan.com': '250',
-  'fraxscan.com': '252',
-  'zkevm.polygonscan.com': '1101',
-  'moonscan.io': '1284',
-  'mantlescan.xyz': '5000',
-  'basescan.org': '8453',
-  'arbiscan.io': '42161',
-  'celoscan.io': '42220',
-  'snowtrace.io': '43114',
-  'lineascan.build': '59144',
-  'blastscan.io': '81457',
-  'scrollscan.com': '534352',
-}
-
-// Chains that use Routescan API instead of Etherscan V2
-const ROUTESCAN_CHAINS = new Set(['43114', '1111', '9745'])
-
-function isRoutescanChain(chainId) {
-  return ROUTESCAN_CHAINS.has(String(chainId))
-}
-
-function getEtherscanApiUrl(chainId) {
-  const normalizedChainId = String(chainId)
-  if (isRoutescanChain(normalizedChainId)) {
-    return `https://api.routescan.io/v2/network/mainnet/evm/${normalizedChainId}/etherscan/api`
-  }
-  return 'https://api.etherscan.io/v2/api'
-}
 
 /**
  * Check if URL is an Etherscan-compatible explorer link
@@ -353,40 +309,15 @@ export async function upload4byte(signatures) {
  * @returns {Promise<Object>} Source code result object
  */
 export async function fetchEtherscanSource(chainId, address) {
-  const apiUrl = getEtherscanApiUrl(chainId)
-  const isRoutescan = isRoutescanChain(chainId)
-  const apiKey = getNextApiKey()
-  
-  const params = new URLSearchParams({
+  const data = await fetchFromEtherscan(chainId, {
     module: 'contract',
     action: 'getsourcecode',
-    address,
-    apikey: apiKey
+    address
   })
   
-  // Etherscan V2 requires chainid, Routescan doesn't
-  if (!isRoutescan) {
-    params.set('chainid', chainId)
-  }
+  const result = data.result?.[0]
   
-  const fetchUrl = `${apiUrl}?${params}`
-  console.log('[Etherscan] Fetching source:', fetchUrl)
-  
-  const response = await fetch(fetchUrl)
-  
-  if (!response.ok) {
-    throw new Error(`Etherscan API error: ${response.status}`)
-  }
-  
-  const data = await response.json()
-  
-  if (data.status === '0') {
-    throw new Error(data.result || 'Contract source not found')
-  }
-  
-  const result = data.result[0]
-  
-  if (!result.SourceCode && !result.ABI) {
+  if (!result?.SourceCode && !result?.ABI) {
     throw new Error('Contract is not verified on Etherscan')
   }
   
@@ -397,31 +328,14 @@ export async function fetchEtherscanSource(chainId, address) {
  * Etherscan - Fetch contract ABI using V2 API
  */
 export async function fetchContractABI(chainId, address) {
-  const apiUrl = getEtherscanApiUrl(chainId)
-  const isRoutescan = isRoutescanChain(chainId)
-  const apiKey = getNextApiKey()
-  
-  const params = new URLSearchParams({
+  const data = await fetchFromEtherscan(chainId, {
     module: 'contract',
     action: 'getabi',
-    address,
-    apikey: apiKey
+    address
   })
   
-  if (!isRoutescan) {
-    params.set('chainid', chainId)
-  }
-  
-  const response = await fetch(`${apiUrl}?${params}`)
-  
-  if (!response.ok) {
-    throw new Error(`Etherscan API error: ${response.status}`)
-  }
-  
-  const data = await response.json()
-  
-  if (data.status === '0') {
-    throw new Error(data.result || 'ABI not found')
+  if (!data.result) {
+    throw new Error('ABI not found')
   }
   
   return JSON.parse(data.result)
@@ -450,82 +364,6 @@ export async function getProxyImplementation(chainId, address) {
     console.warn('Error checking proxy:', e)
     return null
   }
-}
-
-/**
- * Fetch contract info (symbol, name) via RPC multicall
- * @param {string[]} addresses - Contract addresses to fetch info for
- * @param {string} rpcUrl - RPC URL to use
- * @returns {Promise<Map<string, {symbol?: string, name?: string}>>}
- */
-export async function fetchContractInfoBatch(addresses, rpcUrl) {
-  if (!addresses?.length || !rpcUrl) {
-    return new Map()
-  }
-  
-  const ethers = window.ethers
-  if (!ethers) {
-    throw new Error('ethers not loaded')
-  }
-  
-  const provider = new ethers.providers.JsonRpcProvider(rpcUrl)
-  const results = new Map()
-  
-  // ERC20/721 interface for symbol() and name()
-  const erc20Interface = new ethers.utils.Interface([
-    'function symbol() view returns (string)',
-    'function name() view returns (string)',
-  ])
-  
-  const symbolData = erc20Interface.encodeFunctionData('symbol')
-  const nameData = erc20Interface.encodeFunctionData('name')
-  
-  // Batch calls in parallel
-  const batchPromises = addresses.map(async (address) => {
-    try {
-      const [symbolResult, nameResult] = await Promise.allSettled([
-        provider.call({ to: address, data: symbolData }),
-        provider.call({ to: address, data: nameData }),
-      ])
-      
-      const info = {}
-      
-      if (symbolResult.status === 'fulfilled' && symbolResult.value !== '0x') {
-        try {
-          const decoded = erc20Interface.decodeFunctionResult('symbol', symbolResult.value)
-          info.symbol = decoded[0]
-        } catch (e) {
-          // Try bytes32 decode (some tokens return bytes32)
-          try {
-            const decoded = ethers.utils.parseBytes32String(symbolResult.value)
-            if (decoded) info.symbol = decoded.replace(/\0/g, '')
-          } catch {}
-        }
-      }
-      
-      if (nameResult.status === 'fulfilled' && nameResult.value !== '0x') {
-        try {
-          const decoded = erc20Interface.decodeFunctionResult('name', nameResult.value)
-          info.name = decoded[0]
-        } catch (e) {
-          // Try bytes32 decode
-          try {
-            const decoded = ethers.utils.parseBytes32String(nameResult.value)
-            if (decoded) info.name = decoded.replace(/\0/g, '')
-          } catch {}
-        }
-      }
-      
-      if (info.symbol || info.name) {
-        results.set(address.toLowerCase(), info)
-      }
-    } catch (e) {
-      // Silent fail for individual addresses
-    }
-  })
-  
-  await Promise.all(batchPromises)
-  return results
 }
 
 /**

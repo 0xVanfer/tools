@@ -25,9 +25,7 @@
 </template>
 
 <script setup>
-import { getExplorerUrl } from "@/utils/chains";
-import { toChecksumAddress } from "@/utils/ethereum";
-import { getAddressDisplayName } from "@/utils/cacheManager";
+import { useAddressDisplay } from "@/composables";
 import ParameterList from "./ParameterList.vue";
 import MulticallCard from "./MulticallCard.vue";
 
@@ -37,15 +35,8 @@ const props = defineProps({
     chainId: { type: String, default: "1" },
 });
 
-const checksumAddr = (a) => {
-    try {
-        return toChecksumAddress(a);
-    } catch {
-        return a;
-    }
-};
-const explorerUrl = (a) => getExplorerUrl(props.chainId, a, "address") || `https://etherscan.io/address/${a}`;
-const addrName = (a) => getAddressDisplayName(a, props.chainId) || "";
+// Use shared address display utilities - THE SINGLE SOURCE OF TRUTH
+const { getName: addrName, getExplorerUrl: explorerUrl, checksum: checksumAddr } = useAddressDisplay(() => props.chainId);
 const formatEth = (v) => {
     try {
         const e = Number(BigInt(v)) / 1e18;

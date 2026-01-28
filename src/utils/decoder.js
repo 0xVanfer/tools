@@ -8,8 +8,13 @@
  * - Signature lookup integration
  */
 
-import { getEthers, toChecksumAddress } from './ethereum.js'
+import { getEthers, createInterface } from './core/ethers.js'
+import { toChecksumAddressSafe } from './core/address.js'
 import { lookupSignature } from './signature.js'
+import { getSelector } from './ethereum.js'
+
+// Re-export toChecksumAddress for backwards compatibility in decoder
+const toChecksumAddress = toChecksumAddressSafe
 
 // ============================================================================
 // MULTICALL PATTERNS
@@ -81,7 +86,7 @@ export function parseMulticall(payload) {
   const data = normalizePayload(payload)
   
   try {
-    const iface = new ethers.utils.Interface([`function ${info.signature}`])
+    const iface = createInterface([`function ${info.signature}`])
     const decoded = iface.decodeFunctionData(info.name, data)
     
     switch (info.type) {
@@ -173,12 +178,11 @@ export function isMultiSend(payload) {
  * Decode a Safe execTransaction payload
  */
 export function decodeExecTransaction(payload) {
-  const ethers = getEthers()
   const abi = [
     'function execTransaction(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, bytes signatures)'
   ]
   
-  const iface = new ethers.utils.Interface(abi)
+  const iface = createInterface(abi)
   const data = normalizePayload(payload)
   const decoded = iface.decodeFunctionData('execTransaction', data)
   
@@ -255,11 +259,9 @@ export function parseMultiSendPackedBytes(packedBytes) {
  * Parse a Safe multiSend payload (full payload including selector)
  */
 export function parseMultiSend(payload) {
-  const ethers = getEthers()
-  
   // Decode the multiSend(bytes) call first
   const abi = ['function multiSend(bytes transactions)']
-  const iface = new ethers.utils.Interface(abi)
+  const iface = createInterface(abi)
   const data = normalizePayload(payload)
   const decoded = iface.decodeFunctionData('multiSend', data)
   
@@ -560,15 +562,6 @@ function normalizePayload(payload) {
 }
 
 /**
- * Get function selector from payload
- */
-export function getSelector(payload) {
-  const data = normalizePayload(payload)
-  if (data.length < 10) return ''
-  return data.slice(0, 10).toLowerCase()
-}
-
-/**
  * Get full ABI type string including tuple components
  */
 function getFullAbiType(input) {
@@ -666,15 +659,13 @@ function buildTupleComponents(value, input) {
  * Decode a payload with a given signature
  */
 export function decodeWithSignature(signature, payload) {
-  const ethers = getEthers()
-  
   if (!signature) {
     return { params: [], error: 'No signature provided' }
   }
   
   try {
     const abi = [`function ${signature}`]
-    const iface = new ethers.utils.Interface(abi)
+    const iface = createInterface(abi)
     const data = normalizePayload(payload)
     
     // Verify sighash matches
@@ -728,10 +719,8 @@ export function decodeWithSignature(signature, payload) {
  * Decode a payload using ABI
  */
 export function decodeWithABI(abi, payload) {
-  const ethers = getEthers()
-  
   try {
-    const iface = new ethers.utils.Interface(abi)
+    const iface = createInterface(abi)
     const data = normalizePayload(payload)
     const parsed = iface.parseTransaction({ data })
     

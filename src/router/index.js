@@ -8,7 +8,7 @@ const AddressChecksum = () => import('@/views/AddressChecksum.vue')
 const VanityGenerator = () => import('@/views/VanityGenerator.vue')
 const BlockExplorers = () => import('@/views/BlockExplorers.vue')
 const ProtocolLinks = () => import('@/views/ProtocolLinks.vue')
-const VnetReader = () => import('@/views/VnetReader.vue')
+const ContractReader = () => import('@/views/ContractReader.vue')
 const CacheManager = () => import('@/views/CacheManager.vue')
 
 const routes = [
@@ -55,9 +55,9 @@ const routes = [
     meta: { title: 'Protocol Links - ETH Dev Tools' }
   },
   {
-    path: '/vnet-reader',
-    name: 'VnetReader',
-    component: VnetReader,
+    path: '/contract-reader',
+    name: 'ContractReader',
+    component: ContractReader,
     meta: { title: 'Contract Reader - ETH Dev Tools' }
   },
   {

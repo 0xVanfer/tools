@@ -48,7 +48,7 @@ const sections = [
         title: "Contract Functions",
         items: [
             { path: "/payload", label: "Payload Parser", icon: "📦" },
-            { path: "/vnet-reader", label: "Contract Reader", icon: "📖" },
+            { path: "/contract-reader", label: "Contract Reader", icon: "📖" },
             { path: "/signature", label: "Signature Extractor", icon: "✍️" },
         ],
         defaultExpanded: true,

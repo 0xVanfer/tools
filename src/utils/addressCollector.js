@@ -5,6 +5,8 @@
  * Used for post-processing (fetching contract info, symbols, names).
  */
 
+import { isValidAddress, isZeroAddress, normalizeAddress } from './core/address.js'
+
 /**
  * Internal storage: Map<address, Set<elementId>>
  * Tracks which DOM elements contain each address
@@ -19,11 +21,13 @@ let addressMap = new Map()
 export function collectAddress(address, elementId = null) {
   if (!address || typeof address !== 'string') return
   
-  const normalized = address.toLowerCase()
+  // Validate address format
+  if (!isValidAddress(address)) return
   
-  // Skip zero address and invalid addresses
-  if (normalized === '0x0000000000000000000000000000000000000000') return
-  if (!/^0x[a-f0-9]{40}$/i.test(normalized)) return
+  // Skip zero address
+  if (isZeroAddress(address)) return
+  
+  const normalized = normalizeAddress(address)
   
   if (!addressMap.has(normalized)) {
     addressMap.set(normalized, new Set())
@@ -35,52 +39,11 @@ export function collectAddress(address, elementId = null) {
 }
 
 /**
- * Collect multiple addresses at once
- * @param {string[]} addresses 
- */
-export function collectAddresses(addresses) {
-  if (!Array.isArray(addresses)) return
-  for (const addr of addresses) {
-    collectAddress(addr)
-  }
-}
-
-/**
  * Get all collected unique addresses
  * @returns {string[]} Array of lowercase addresses
  */
-export function getAllAddresses() {
+function getAllAddresses() {
   return Array.from(addressMap.keys())
-}
-
-/**
- * Get element IDs associated with an address
- * @param {string} address 
- * @returns {Set<string>}
- */
-export function getElementIdsForAddress(address) {
-  const normalized = address?.toLowerCase()
-  return addressMap.get(normalized) || new Set()
-}
-
-/**
- * Check if an address has been collected
- * @param {string} address 
- * @returns {boolean}
- */
-export function hasAddress(address) {
-  return addressMap.has(address?.toLowerCase())
-}
-
-/**
- * Get statistics about collected addresses
- */
-export function getAddressStats() {
-  return {
-    count: addressMap.size,
-    addresses: getAllAddresses(),
-    elementsCount: Array.from(addressMap.values()).reduce((sum, set) => sum + set.size, 0),
-  }
 }
 
 /**
@@ -88,17 +51,6 @@ export function getAddressStats() {
  */
 export function clearAddresses() {
   addressMap.clear()
-}
-
-/**
- * Reset and return the current collection
- * Useful for getting addresses before clearing
- * @returns {string[]}
- */
-export function flushAddresses() {
-  const addresses = getAllAddresses()
-  clearAddresses()
-  return addresses
 }
 
 /**
@@ -133,18 +85,18 @@ export function collectFromDecoded(decoded) {
       collectFromDecoded(tx)
     }
   }
-  
+
   if (decoded.calls) {
     for (const call of decoded.calls) {
       collectFromDecoded(call)
     }
   }
-  
+
   // Collect from decoded bytes
   if (decoded.decoded) {
     collectFromDecoded(decoded.decoded)
   }
-  
+
   if (decoded.decodedArray) {
     for (const d of decoded.decodedArray) {
       if (d) collectFromDecoded(d)
@@ -189,30 +141,4 @@ function collectFromParams(params) {
       }
     }
   }
-}
-
-/**
- * Collect addresses from Safe transaction structure
- */
-export function collectFromSafeTransaction(tx) {
-  if (tx.to) collectAddress(tx.to)
-  if (tx.address) collectAddress(tx.address)
-  if (tx.gasToken) collectAddress(tx.gasToken)
-  if (tx.refundReceiver) collectAddress(tx.refundReceiver)
-}
-
-/**
- * Generate a unique element ID for address tracking
- * @returns {string}
- */
-let elementIdCounter = 0
-export function generateAddressElementId() {
-  return `addr-${++elementIdCounter}`
-}
-
-/**
- * Reset element ID counter (for new decode session)
- */
-export function resetElementIdCounter() {
-  elementIdCounter = 0
 }

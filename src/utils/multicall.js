@@ -14,7 +14,7 @@
  * 0xcA11bde05977b3631167028862bE2a173976CA11
  */
 
-import { getEthers } from './ethereum.js'
+import { getEthers, createInterface } from './core/ethers.js'
 
 /**
  * Multicall3 contract address (same on most EVM chains).
@@ -39,11 +39,8 @@ const MULTICALL3_ABI = [
  * @returns {{target: string, allowFailure: boolean, callData: string, signature: string, args: any[]}}
  */
 export function buildCall(target, signature, args = [], allowFailure = true) {
-  const ethers = getEthers()
-  if (!ethers) throw new Error('ethers not loaded')
-  
   // Create interface for encoding
-  const iface = new ethers.utils.Interface([`function ${signature}`])
+  const iface = createInterface([`function ${signature}`])
   const functionName = signature.split('(')[0]
   
   // Encode function call
@@ -84,14 +81,11 @@ export function buildRawCall(target, callData, allowFailure = true) {
  * @returns {Promise<Array<{success: boolean, returnData: string}>>} Call results
  */
 export async function executeMulticall(rpcUrl, calls) {
-  const ethers = getEthers()
-  if (!ethers) throw new Error('ethers not loaded')
-  
   if (!calls || calls.length === 0) {
     return []
   }
   
-  const iface = new ethers.utils.Interface(MULTICALL3_ABI)
+  const iface = createInterface(MULTICALL3_ABI)
   
   // Format calls for aggregate3
   const formattedCalls = calls.map(call => ({
@@ -154,9 +148,6 @@ export async function executeMulticall(rpcUrl, calls) {
  * @returns {any} Decoded value(s)
  */
 export function decodeResult(returnData, signature, outputTypes) {
-  const ethers = getEthers()
-  if (!ethers) throw new Error('ethers not loaded')
-  
   if (!returnData || returnData === '0x') {
     return null
   }
@@ -171,7 +162,7 @@ export function decodeResult(returnData, signature, outputTypes) {
     // Build full function signature with returns
     const funcName = signature.split('(')[0]
     const fullSig = `function ${signature} returns (${outputTypes})`
-    const iface = new ethers.utils.Interface([fullSig])
+    const iface = createInterface([fullSig])
     
     // Use decodeFunctionResult which handles the full function ABI properly
     const decoded = iface.decodeFunctionResult(funcName, returnData)

@@ -1,5 +1,5 @@
 <template>
-    <div class="vnet-reader">
+    <div class="contract-reader">
         <PageHeader title="Contract Reader" description="Batch read contract state via Multicall3 with optional production comparison" />
 
         <div class="reader-container">
@@ -712,11 +712,11 @@ async function connectRpc() {
 
         // If custom RPC provided, detect chain ID
         if (targetRpcUrl) {
-            console.log("[VnetReader] Connecting to custom RPC:", targetRpcUrl);
+            console.log("[ContractReader] Connecting to custom RPC:", targetRpcUrl);
             const provider = new ethers.providers.JsonRpcProvider(targetRpcUrl);
             const network = await provider.getNetwork();
             chainId = network.chainId.toString();
-            console.log("[VnetReader] Detected chainId:", chainId);
+            console.log("[ContractReader] Detected chainId:", chainId);
 
             detectedChainId.value = chainId;
             selectedChainId.value = chainId;
@@ -752,9 +752,9 @@ async function connectRpc() {
             updateUrlAddressSymbols(chainId);
         }
 
-        console.log("[VnetReader] Connected successfully");
+        console.log("[ContractReader] Connected successfully");
     } catch (e) {
-        console.error("[VnetReader] Connection error:", e);
+        console.error("[ContractReader] Connection error:", e);
         setError(`Connection failed: ${e.message}`);
     } finally {
         connecting.value = false;
@@ -805,12 +805,12 @@ async function onAddressBlur() {
             const result = await fetchContractABI(effectiveChainId.value, addr);
             if (result.abi) {
                 contractAbiMethods.value = parseAbiToMethods(result.abi);
-                console.log("[VnetReader] Loaded ABI methods:", contractAbiMethods.value.length);
+                console.log("[ContractReader] Loaded ABI methods:", contractAbiMethods.value.length);
             } else {
                 contractAbiMethods.value = [];
             }
         } catch (e) {
-            console.warn("[VnetReader] Failed to load ABI:", e.message);
+            console.warn("[ContractReader] Failed to load ABI:", e.message);
             contractAbiMethods.value = [];
         } finally {
             loadingAbi.value = false;
@@ -1020,9 +1020,9 @@ async function executeQueue() {
         paramValues.value = [];
         paramDecimals.value = [];
 
-        console.log("[VnetReader] Execution complete:", results.value);
+        console.log("[ContractReader] Execution complete:", results.value);
     } catch (e) {
-        console.error("[VnetReader] Execution error:", e);
+        console.error("[ContractReader] Execution error:", e);
         setError(`Execution failed: ${e.message}`);
     } finally {
         executing.value = false;

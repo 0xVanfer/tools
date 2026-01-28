@@ -1,0 +1,14 @@
+import{_ as x,o as l,c as u,a as m,u as c,b as s,v as C,x as y,t as p,F as A,r as g,n as E,k as w,e as v}from"./index-Dgf0mUwk.js";import{_ as B}from"./PageHeader-BcJsB9OO.js";import{C as f}from"./CopyButton-DDSvvkW7.js";import{_ as F}from"./EmptyState-CJuNnzsv.js";const D={class:"address-checksum"},T={class:"container"},N={class:"sidebar"},V={class:"card"},H={class:"card-body"},L=["disabled"],$={class:"main-content"},I={class:"output-wrapper"},R={class:"output"},z={class:"result"},M={class:"address"},O={class:"result"},S={class:"address lowercase"},U={__name:"AddressChecksum",setup(W){const a=v(""),o=v([]),d=v(!1),h=n=>{const t=[];let e=0;for(;(e=n.indexOf("0x",e))!==-1;){const r=n.substring(e,e+42);if(r.length<42){e+=2;continue}if(!/^0x[a-fA-F0-9]{40}$/.test(r)){e+=2;continue}try{const i=window.ethers;if(!i){e+=2;continue}const _=i.utils.getAddress(r);t.push({checksum:_,lowercase:_.toLowerCase()})}catch{e+=2;continue}e+=2}return t},b=()=>{d.value=!0;try{const n=h(a.value);n.length>0&&(o.value=[...o.value,...n]),a.value=""}finally{d.value=!1}},k=()=>{o.value=[]};return(n,t)=>(l(),u("div",D,[m(c(B),{title:"Address Checksum",description:"Convert Ethereum addresses to checksummed and lowercase format"}),s("div",T,[s("div",N,[s("div",V,[s("div",H,[t[1]||(t[1]=s("label",{class:"label"},"Input (any text containing addresses)",-1)),C(s("textarea",{"onUpdate:modelValue":t[0]||(t[0]=e=>a.value=e),class:"input textarea addresses-input",placeholder:"Enter Ethereum addresses",rows:"6"},null,512),[[y,a.value]]),s("button",{class:"btn btn-primary btn-block mt-4",onClick:b,disabled:!a.value.trim()||d.value},p(d.value?"pending...":"Convert"),9,L),t[2]||(t[2]=s("div",{class:"info-log mt-6"},[s("p",null,"Your addresses will be recognized automatically."),s("p",null,"For example, the input can be:"),s("pre",null,`[
+    {
+        "symbol": "stETH",
+        "address": "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84"
+    },
+    {
+        "symbol": "eETH",
+        "address": "0x35fA164735182de50811E8e2E824cFb9B6118ac2"
+    },
+    {
+        "symbol": "WETH",
+        "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+    }
+]`)],-1))])])]),s("div",$,[s("div",I,[s("div",{class:"output-title"},[s("button",{class:"btn btn-sm btn-secondary",onClick:k},"Refresh")]),s("div",R,[(l(!0),u(A,null,g(o.value,(e,r)=>(l(),u("div",{key:r,class:"result-group"},[s("div",z,[t[3]||(t[3]=s("strong",null,"Checksum Address:",-1)),s("span",M,p(e.checksum),1),m(c(f),{text:e.checksum},null,8,["text"])]),s("div",O,[t[4]||(t[4]=s("strong",null,"Lowercase Address:",-1)),s("span",S,p(e.lowercase),1),m(c(f),{text:e.lowercase},null,8,["text"])]),t[5]||(t[5]=s("div",{class:"empty-line"},null,-1))]))),128)),o.value.length===0?(l(),E(c(F),{key:0,icon:"✓",title:"No addresses yet",description:"Enter addresses on the left and click Convert"})):w("",!0)])])])])]))}},J=x(U,[["__scopeId","data-v-660d131e"]]);export{J as default};

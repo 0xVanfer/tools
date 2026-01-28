@@ -14,7 +14,7 @@
  * 0xcA11bde05977b3631167028862bE2a173976CA11
  */
 
-import { getEthers } from './ethereum.js'
+import { getEthers, createInterface } from './core/ethers.js'
 import { 
   getAddressDisplayName, 
   getContractCache,
@@ -107,10 +107,7 @@ function buildMulticallBatch(addresses) {
  * @returns {Promise<Array<{success: boolean, returnData: string}>>} Call results
  */
 async function executeMulticall(rpcUrl, calls) {
-  const ethers = getEthers()
-  if (!ethers) throw new Error('ethers not loaded')
-  
-  const iface = new ethers.utils.Interface(MULTICALL3_ABI)
+  const iface = createInterface(MULTICALL3_ABI)
   
   // Encode the tryAggregate call
   // requireSuccess = false allows individual calls to fail
@@ -171,7 +168,7 @@ function parseMulticallResults(addresses, results) {
   if (!ethers) return new Map()
   
   const infoMap = new Map()
-  const erc20Interface = new ethers.utils.Interface(ERC20_ABI)
+  const erc20Interface = createInterface(ERC20_ABI)
   
   for (let i = 0; i < addresses.length; i++) {
     const address = addresses[i]

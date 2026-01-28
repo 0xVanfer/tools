@@ -1,4 +1,11 @@
 // Utils barrel export
+
+// Core modules (centralized utilities)
+export * from './core/ethers.js'
+export * from './core/address.js'
+export * from './core/etherscan.js'
+
+// Application utilities
 export * from './chains.js'
 export * from './ethereum.js'
 export * from './crypto.js'

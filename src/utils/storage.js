@@ -42,28 +42,6 @@ export function removeItem(key) {
 }
 
 /**
- * Clear all items with prefix
- */
-export function clearAll() {
-  try {
-    const keys = Object.keys(localStorage).filter(k => k.startsWith(STORAGE_PREFIX))
-    keys.forEach(k => localStorage.removeItem(k))
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
- * Get all keys with prefix
- */
-export function getAllKeys() {
-  return Object.keys(localStorage)
-    .filter(k => k.startsWith(STORAGE_PREFIX))
-    .map(k => k.slice(STORAGE_PREFIX.length))
-}
-
-/**
  * Storage with expiration
  */
 export function setItemWithExpiry(key, value, ttlMs) {

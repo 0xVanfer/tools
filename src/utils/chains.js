@@ -524,138 +524,84 @@ export const EXPLORER_CHAIN_MAP = Object.entries(chains).reduce((acc, [chainId, 
 }, {})
 
 /**
- * Build internal name to chain ID mapping
+ * CHAINS object for dropdown compatibility
+ * Provides id and name for each chain
  */
-export const INTERNAL_NAME_TO_CHAIN_ID = Object.entries(chains).reduce((acc, [chainId, config]) => {
-  if (config.internalName) {
-    acc[config.internalName] = Number(chainId)
+export const CHAINS = Object.entries(chains).reduce((acc, [chainId, config]) => {
+  acc[chainId] = {
+    id: chainId,
+    name: config.name,
+    ...config
   }
   return acc
 }, {})
 
 /**
- * CHAINS object keyed by string id (for components that need string keys)
- */
-export const CHAINS = Object.entries(chains).reduce((acc, [chainId, config]) => {
-  const id = config.shortName?.toLowerCase() || `chain-${chainId}`
-  acc[id] = {
-    id,
-    chainId: Number(chainId),
-    name: config.name,
-    shortName: config.shortName,
-    internalName: config.internalName,
-    isTestnet: config.isTestnet || false,
-    explorer: {
-      url: config.explorer,
-      name: config.name + ' Explorer',
-    },
-    rpcs: config.rpcs,
-    rpc: config.rpcs?.[0] || null,
-  }
-  return acc
-}, {
-  // Also add mainnet as a common alias
-  mainnet: {
-    id: 'mainnet',
-    chainId: 1,
-    name: 'Ethereum',
-    shortName: 'ETH',
-    internalName: 'ethereum',
-    isTestnet: false,
-    explorer: {
-      url: 'https://etherscan.io',
-      name: 'Etherscan',
-    },
-    rpcs: chains[1]?.rpcs || [],
-    rpc: chains[1]?.rpcs?.[0] || null,
-  }
-})
-
-/**
- * Get all chain IDs
- */
-export function getChainIds(includeTestnets = false) {
-  return Object.entries(chains)
-    .filter(([_, config]) => includeTestnets || !config.isTestnet)
-    .map(([id]) => Number(id))
-    .sort((a, b) => a - b)
-}
-
-/**
- * Get chain info by ID
+ * Get chain config by ID
+ * @param {string|number} chainId 
+ * @returns {Object|undefined} Chain configuration
  */
 export function getChain(chainId) {
-  const numericId = Number(chainId)
-  return chains[numericId] || null
+  return chains[Number(chainId)]
 }
 
 /**
- * Get chain name
+ * Get all available chain IDs
+ * @returns {number[]} Array of chain IDs
+ */
+export function getChainIds() {
+  return Object.keys(chains).map(Number)
+}
+
+/**
+ * Get chain name by ID
+ * @param {string|number} chainId 
+ * @returns {string}
  */
 export function getChainName(chainId) {
-  const numericId = Number(chainId)
-  return chains[numericId]?.name || `Chain ${chainId}`
+  const chain = getChain(chainId)
+  return chain?.name || `Chain ${chainId}`
 }
 
 /**
- * Get chain by internal name
- */
-export function getChainByInternalName(name) {
-  const chainId = INTERNAL_NAME_TO_CHAIN_ID[name]
-  return chainId ? chains[chainId] : null
-}
-
-/**
- * Check if chain has Etherscan-compatible API
+ * Check if chain has Etherscan API support
  * All chains now use Etherscan V2 API, so this returns true for all valid chains
- * Routescan chains are handled separately in the API modules
+ * @param {string|number} chainId 
+ * @returns {boolean}
  */
 export function hasEtherscanApi(chainId) {
-  const numericId = Number(chainId)
-  return chains[numericId] !== undefined
+  return getChain(chainId) !== undefined
 }
 
-// Chains that use Routescan API instead of Etherscan V2
-const ROUTESCAN_CHAINS = new Set(['43114', '1111', '9745'])
-
 /**
- * Get explorer API URL (unified Etherscan V2 API)
+ * Get explorer URL (unified Etherscan V2 API)
  * @param {string|number} chainId - Chain ID
  * @returns {string|null} API URL or null if chain not found
  */
 export function getExplorerApiUrl(chainId) {
-  const numericId = Number(chainId)
-  if (!chains[numericId]) return null
+  if (!getChain(chainId)) return null
   
   const normalizedChainId = String(chainId)
-  if (ROUTESCAN_CHAINS.has(normalizedChainId)) {
+  // Known Routescan chains: 9745
+  const routescanChains = new Set(['9745'])
+  if (routescanChains.has(normalizedChainId)) {
     return `https://api.routescan.io/v2/network/mainnet/evm/${normalizedChainId}/etherscan/api`
   }
   return 'https://api.etherscan.io/v2/api'
 }
 
 /**
- * Get explorer URL for address or tx
- * @param {string|number} chainIdOrKey - Chain ID (number or string) or chain key from CHAINS
+ * Get explorer URL for address, tx, token, or block
+ * @param {string|number} chainId - Chain ID
  * @param {string} value - Address, tx hash, or block number
  * @param {string} type - 'address', 'tx', 'token', 'block', or 'home'
+ * @returns {string|null}
  */
-export function getExplorerUrl(chainIdOrKey, value, type = 'address') {
-  let chain
+export function getExplorerUrl(chainId, value, type = 'address') {
+  const chain = getChain(chainId)
+  if (!chain?.explorer) return null
   
-  // Try to parse as a chain ID (number or numeric string)
-  const numericId = Number(chainIdOrKey)
-  if (!isNaN(numericId) && chains[numericId]) {
-    chain = chains[numericId]
-  } else if (typeof chainIdOrKey === 'string' && CHAINS[chainIdOrKey]) {
-    // Fall back to CHAINS lookup for string keys like 'eth', 'arb'
-    chain = CHAINS[chainIdOrKey]
-  }
-  
-  if (!chain) return null
-  
-  const base = chain.explorer?.url || chain.explorer
-  if (!base) return null
+  const base = chain.explorer.replace(/\/$/, '')
   
   switch (type) {
     case 'address':
@@ -667,8 +613,9 @@ export function getExplorerUrl(chainIdOrKey, value, type = 'address') {
     case 'block':
       return `${base}/block/${value}`
     case 'home':
-    default:
       return base
+    default:
+      return `${base}/${type}/${value}`
   }
 }
 
@@ -680,14 +627,6 @@ export function getRpcUrl(chainId) {
   const chain = chains[numericId]
   if (!chain?.rpcs?.length) return null
   return getAvailableRpc(numericId)
-}
-
-/**
- * Get all RPC URLs for a chain
- */
-export function getRpcUrls(chainId) {
-  const numericId = Number(chainId)
-  return chains[numericId]?.rpcs || []
 }
 
 /**

@@ -64,7 +64,7 @@ const tools = [
         description: "Directory of DeFi protocols organized by category",
     },
     {
-        path: "/vnet-reader",
+        path: "/contract-reader",
         icon: "📖",
         title: "Contract Reader",
         category: "Contracts",

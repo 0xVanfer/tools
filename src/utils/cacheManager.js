@@ -37,6 +37,7 @@ import {
   createStore,
   GLOBAL_CHAIN_ID,
 } from './storageManager.js'
+import { normalizeAddress } from './core/address.js'
 
 // Re-export storage manager utilities for extensibility
 export { 
@@ -48,13 +49,6 @@ export {
   exportAllCache,
   importAllCache,
   GLOBAL_CHAIN_ID,
-}
-
-/**
- * Normalize address to lowercase
- */
-function normalizeAddress(address) {
-  return address?.toLowerCase?.() || ''
 }
 
 /**

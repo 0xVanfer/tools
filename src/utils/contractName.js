@@ -5,57 +5,17 @@
  * Uses Etherscan V2 API with API key rotation.
  * Supports Routescan for specific chains.
  * Handles proxy contracts by fetching implementation names.
- * 
- * Based on reference/payload/js/core/contract-name.js
  */
 
 import { setName, getCachedName } from './cacheManager.js'
 import { chains } from './chains.js'
-
-/**
- * Etherscan API keys for rate limiting bypass.
- * Rotates through keys on each request.
- */
-const API_KEYS = [
-  'B74HQUR15VESEHDE1HWQSFF6HGDDJ8C9RH',
-  '69TECUX4UTVCG19HPW6SRTUW5YHT1J8JZX',
-  '6JEUZGXV6NCGQEMKSWEGI46MJRK1QDWJ8C'
-]
-
-let apiKeyIndex = 0
-
-/**
- * Get next API key in rotation.
- */
-function getNextApiKey() {
-  const key = API_KEYS[apiKeyIndex]
-  apiKeyIndex = (apiKeyIndex + 1) % API_KEYS.length
-  return key
-}
-
-/**
- * Chain IDs that use Routescan API instead of Etherscan V2 API.
- */
-const ROUTESCAN_CHAINS = ['9745']
-
-/**
- * Check if a chain uses Routescan API.
- */
-function isRoutescanChain(chainId) {
-  return ROUTESCAN_CHAINS.includes(String(chainId))
-}
-
-/**
- * Get the API URL for a given chain.
- * Uses Etherscan V2 API for most chains, Routescan API for specific chains.
- */
-function getApiUrl(chainId) {
-  const normalizedChainId = String(chainId)
-  if (isRoutescanChain(normalizedChainId)) {
-    return `https://api.routescan.io/v2/network/mainnet/evm/${normalizedChainId}/etherscan/api`
-  }
-  return 'https://api.etherscan.io/v2/api'
-}
+import {
+  getNextApiKey,
+  isRoutescanChain,
+  getEtherscanApiUrl,
+  buildApiUrl,
+} from './core/etherscan.js'
+import { normalizeAddress } from './core/address.js'
 
 /**
  * In-memory cache for "not found" entries to avoid repeated API calls.
@@ -90,8 +50,8 @@ function isProxyContractName(name) {
  * Get contract name from cache.
  */
 function getFromCache(chainId, address) {
-  const normalizedAddress = address.toLowerCase()
-  const notFoundKey = `${chainId}:${normalizedAddress}`
+  const normalizedAddr = normalizeAddress(address)
+  const notFoundKey = `${chainId}:${normalizedAddr}`
   
   // Check in-memory "not found" cache
   const notFoundExpiry = notFoundCache.get(notFoundKey)
@@ -100,7 +60,7 @@ function getFromCache(chainId, address) {
   }
   
   // Check persistent cache
-  const cached = getCachedName(chainId, normalizedAddress)
+  const cached = getCachedName(chainId, normalizedAddr)
   if (cached) {
     return { name: cached, source: 'cache' }
   }
@@ -116,7 +76,7 @@ function saveToCache(chainId, address, name) {
     setName(address, name, chainId)
   } else {
     // Mark as not found in memory cache
-    const notFoundKey = `${chainId}:${address.toLowerCase()}`
+    const notFoundKey = `${chainId}:${normalizeAddress(address)}`
     notFoundCache.set(notFoundKey, Date.now() + NOT_FOUND_EXPIRY_MS)
   }
 }
@@ -127,13 +87,11 @@ function saveToCache(chainId, address, name) {
  */
 async function fetchSingleContractName(address, chainId) {
   const normalizedChainId = String(chainId)
-  const apiUrl = getApiUrl(normalizedChainId)
-  const isRoutescan = isRoutescanChain(normalizedChainId)
-  const apiKey = getNextApiKey()
-  
-  const fetchUrl = isRoutescan
-    ? `${apiUrl}?module=contract&action=getsourcecode&address=${address}&apikey=${apiKey}`
-    : `${apiUrl}?chainid=${normalizedChainId}&module=contract&action=getsourcecode&address=${address}&apikey=${apiKey}`
+  const fetchUrl = buildApiUrl(normalizedChainId, {
+    module: 'contract',
+    action: 'getsourcecode',
+    address
+  })
   
   try {
     const response = await fetch(fetchUrl)
@@ -165,7 +123,7 @@ async function fetchSingleContractName(address, chainId) {
           await new Promise(resolve => setTimeout(resolve, 300))
           
           // Fetch implementation contract name
-          const implName = await fetchImplementationName(implAddress, normalizedChainId, apiUrl, isRoutescan)
+          const implName = await fetchImplementationName(implAddress, normalizedChainId)
           
           if (implName) {
             const combinedName = `${implName}(Proxy)`
@@ -191,15 +149,15 @@ async function fetchSingleContractName(address, chainId) {
 /**
  * Fetch contract name for an implementation address with retry logic.
  */
-async function fetchImplementationName(address, chainId, apiUrl, isRoutescan, retryCount = 0) {
+async function fetchImplementationName(address, chainId, retryCount = 0) {
   const MAX_RETRIES = 3
   const RETRY_DELAY_MS = 500
   
-  const apiKey = getNextApiKey()
-  
-  const fetchUrl = isRoutescan
-    ? `${apiUrl}?module=contract&action=getsourcecode&address=${address}&apikey=${apiKey}`
-    : `${apiUrl}?chainid=${chainId}&module=contract&action=getsourcecode&address=${address}&apikey=${apiKey}`
+  const fetchUrl = buildApiUrl(chainId, {
+    module: 'contract',
+    action: 'getsourcecode',
+    address
+  })
   
   try {
     const response = await fetch(fetchUrl)
@@ -212,7 +170,7 @@ async function fetchImplementationName(address, chainId, apiUrl, isRoutescan, re
     // Check for rate limit
     if (data.status === '0' && data.message === 'NOTOK' && retryCount < MAX_RETRIES) {
       await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (retryCount + 1)))
-      return fetchImplementationName(address, chainId, apiUrl, isRoutescan, retryCount + 1)
+      return fetchImplementationName(address, chainId, retryCount + 1)
     }
     
     if (data.status === '1' && data.result && data.result[0]) {
@@ -360,5 +318,5 @@ export function getChainName(chainId) {
   return chain?.name || `Chain ${chainId}`
 }
 
-// Re-export for backwards compatibility
-export { getNextApiKey, getApiUrl, isRoutescanChain, ROUTESCAN_CHAINS }
+// Re-export core etherscan utilities for backwards compatibility
+export { getNextApiKey, isRoutescanChain, getEtherscanApiUrl as getApiUrl }

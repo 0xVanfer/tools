@@ -206,9 +206,7 @@
 </template>
 
 <script setup>
-import { getExplorerUrl } from "@/utils/chains";
-import { isValidAddress, toChecksumAddress } from "@/utils/ethereum";
-import { getAddressDisplayName } from "@/utils/cacheManager";
+import { useAddressDisplay, isAddress as isValidAddr } from "@/composables";
 
 const props = defineProps({
     params: { type: Array, required: true },
@@ -216,28 +214,13 @@ const props = defineProps({
     depth: { type: Number, default: 0 },
 });
 
-const isAddress = (type, value) => type === "address" && typeof value === "string" && isValidAddress(value);
+// Use shared address display utilities - THE SINGLE SOURCE OF TRUTH
+const { getName: getAddrName, getExplorerUrl: explorerAddressUrl, checksum: checksumAddr } = useAddressDisplay(() => props.chainId);
+
+const isAddress = (type, value) => type === "address" && typeof value === "string" && isValidAddr(value);
 const isAddressArray = (type, value) => type === "address[]" && Array.isArray(value);
 const isUintArray = (type, value) => /^uint\d+\[\]$/.test(type) && Array.isArray(value);
 const isBytesArray = (type, value) => /^bytes\d*\[\]$/.test(type) && Array.isArray(value);
-
-const checksumAddr = (addr) => {
-    try {
-        return toChecksumAddress(addr);
-    } catch {
-        return addr;
-    }
-};
-
-const explorerAddressUrl = (addr) => {
-    const base = getExplorerUrl(props.chainId, addr, "address");
-    return base || `https://etherscan.io/address/${checksumAddr(addr)}`;
-};
-
-const getAddrName = (addr) => {
-    if (!addr) return "";
-    return getAddressDisplayName(addr, props.chainId) || "";
-};
 
 const copy = async (text) => {
     try {

@@ -56,7 +56,7 @@
                     </div>
 
                     <div class="actions">
-                        <button v-if="vnetRpcUrl" class="btn btn-outline" @click="openVnetReader">📖 Read Contract State</button>
+                        <button v-if="vnetRpcUrl" class="btn btn-outline" @click="openContractReader">📖 Read Contract State</button>
                         <LoadingSpinner v-if="loading" size="sm" />
                     </div>
                 </div>
@@ -256,14 +256,14 @@
 <script setup>
 import { ref, computed, watch, onMounted } from "vue";
 import { ChainSelect, CopyButton, LoadingSpinner, EmptyState } from "@/components";
-import { useChain, useLoading } from "@/composables";
-import { isValidAddress, toChecksumAddress } from "@/utils/ethereum";
-import { getRpcUrl, getExplorerUrl } from "@/utils/chains";
+import { useChain, useLoading, useAddressDisplay } from "@/composables";
+import { isValidAddress } from "@/utils/ethereum";
+import { getRpcUrl } from "@/utils/chains";
 import { decodePayload, collectAddresses } from "@/utils/decoder";
 import { parseInput, detectLinkType } from "@/utils/linkParsers";
-import { getAddressDisplayName, setCustomName, getCacheStats } from "@/utils/cacheManager";
-import { clearAddresses as clearAddressCollector, collectFromDecoded, getAllAddresses as getCollectedAddresses } from "@/utils/addressCollector";
-import { fetchContractInfoFromRpc, fetchAndDisplayContractInfo, getDisplayNamesForAddresses } from "@/utils/contractInfo";
+import { getAddressDisplayName, getCacheStats } from "@/utils/cacheManager";
+import { clearAddresses as clearAddressCollector, collectFromDecoded } from "@/utils/addressCollector";
+import { fetchContractInfoFromRpc } from "@/utils/contractInfo";
 import { fetchContractNames } from "@/utils/contractName";
 
 // Sub-components for nested display
@@ -284,6 +284,10 @@ const parsedTxInfo = ref(null);
 const vnetRpcUrl = ref(null);
 const vnetId = ref(null);
 const currentChainId = ref("1");
+
+// Use shared address display utilities - THE SINGLE SOURCE OF TRUTH
+// This ensures consistent rendering across all components
+const { getName: getAddressLabel, getExplorerUrl: getExplorerAddressUrl, checksum: checksumAddr } = useAddressDisplay(currentChainId);
 
 // Multiple transactions (from VNet list)
 const multiplePayloads = ref([]);
@@ -352,39 +356,14 @@ const collectedAddresses = computed(() => {
         addrs.add(parsedTxInfo.value.to.toLowerCase());
     }
 
-    return Array.from(addrs).map((a) => {
-        try {
-            return toChecksumAddress(a);
-        } catch {
-            return a;
-        }
-    });
+    return Array.from(addrs).map((a) => checksumAddr(a));
 });
 
-// Contract info cache (reactive)
-const contractInfoMap = ref(new Map());
-const addressDisplayNames = ref(new Map());
+// Cache refresh key to trigger re-render when cache is updated
 const cacheRefreshKey = ref(0);
 
-// Get label for address (symbol or name from contract info)
-// Uses 5-level priority: customName(global) > customName(chain) > symbol > name(global) > name(chain)
-const getAddressLabel = (address) => {
-    // Trigger reactivity dependency on refresh key
-    const _ = cacheRefreshKey.value;
-
-    // First check the cached display names from cacheManager
-    const displayName = getAddressDisplayName(address, currentChainId.value);
-    if (displayName) return displayName;
-
-    // Fall back to locally fetched info
-    const info = contractInfoMap.value.get(address.toLowerCase());
-    if (info) {
-        return info.symbol || info.name || "";
-    }
-    return "";
-};
-
 // Fetch contract info for collected addresses using new modules
+// Always uses production RPC (not VNet RPC) for fetching symbols and contract names
 const fetchContractInfoForAddresses = async () => {
     const addresses = collectedAddresses.value;
     console.log("[PayloadParser] fetchContractInfoForAddresses called", {
@@ -393,67 +372,58 @@ const fetchContractInfoForAddresses = async () => {
     });
     if (!addresses.length) return;
 
-    const newMap = new Map(contractInfoMap.value);
-    const addressesToFetch = [];
+    // Determine the chain ID to use for fetching contract info
+    // Always use production chain RPC, fall back to Ethereum mainnet if current chain has no RPC
+    let fetchChainId = currentChainId.value;
+    let rpcUrl = getRpcUrl(fetchChainId);
 
-    // Check cache first using cacheManager
-    for (const addr of addresses) {
-        const displayName = getAddressDisplayName(addr, currentChainId.value);
+    // If no RPC URL for current chain, fall back to Ethereum mainnet
+    if (!rpcUrl) {
+        console.log("[PayloadParser] No RPC for chain", fetchChainId, ", falling back to Ethereum mainnet");
+        fetchChainId = "1";
+        rpcUrl = getRpcUrl(fetchChainId);
+    }
+
+    // Check which addresses need to be fetched (not in cache)
+    const addressesToFetch = addresses.filter((addr) => {
+        const displayName = getAddressDisplayName(addr, currentChainId.value) || getAddressDisplayName(addr, fetchChainId);
         if (displayName) {
             console.log("[PayloadParser] Found in cache:", addr, displayName);
-            addressDisplayNames.value.set(addr.toLowerCase(), displayName);
-        } else {
-            addressesToFetch.push(addr);
+            return false;
         }
-    }
+        return true;
+    });
 
     console.log("[PayloadParser] Addresses to fetch from RPC:", addressesToFetch.length);
 
-    // Fetch remaining from RPC
-    if (addressesToFetch.length > 0) {
-        const rpcUrl = getRpcUrl(currentChainId.value);
-        console.log("[PayloadParser] RPC URL for chain", currentChainId.value, ":", rpcUrl);
-        if (rpcUrl) {
-            try {
-                const fetched = await fetchContractInfoFromRpc(addressesToFetch, rpcUrl, currentChainId.value);
-                for (const [addr, info] of fetched) {
-                    newMap.set(addr, info);
-                    // Update display names
-                    if (info.symbol) {
-                        addressDisplayNames.value.set(addr, info.symbol);
-                    } else if (info.name) {
-                        addressDisplayNames.value.set(addr, info.name);
-                    }
-                }
-                contractInfoMap.value = new Map(newMap);
+    // Fetch remaining from production RPC
+    // fetchContractInfoFromRpc saves symbols to cache automatically
+    if (addressesToFetch.length > 0 && rpcUrl) {
+        console.log("[PayloadParser] Using production RPC for chain", fetchChainId, ":", rpcUrl);
+        try {
+            const fetched = await fetchContractInfoFromRpc(addressesToFetch, rpcUrl, fetchChainId);
 
-                // Force refresh of all ParameterList components
-                cacheRefreshKey.value++;
+            // Force refresh of all components to show newly cached data
+            cacheRefreshKey.value++;
 
-                // Fetch contract names from Etherscan for addresses without symbols
-                const addressesWithoutSymbol = addressesToFetch.filter((addr) => {
-                    const info = fetched.get(addr.toLowerCase());
-                    return !info?.symbol;
-                });
+            // Fetch contract names from Etherscan for addresses without symbols
+            const addressesWithoutSymbol = addressesToFetch.filter((addr) => {
+                const info = fetched.get(addr.toLowerCase());
+                return !info?.symbol;
+            });
 
-                if (addressesWithoutSymbol.length > 0) {
-                    // Fetch in background, don't await
-                    fetchContractNames(addressesWithoutSymbol, currentChainId.value)
-                        .then((names) => {
-                            for (const [addr, name] of names) {
-                                if (!addressDisplayNames.value.get(addr)) {
-                                    addressDisplayNames.value.set(addr, name);
-                                }
-                            }
-                            // Trigger reactivity
-                            addressDisplayNames.value = new Map(addressDisplayNames.value);
-                            cacheRefreshKey.value++;
-                        })
-                        .catch(() => {});
-                }
-            } catch (e) {
-                console.warn("Failed to fetch contract info:", e);
+            if (addressesWithoutSymbol.length > 0) {
+                // Fetch contract names and save to cache (fetchContractNames saves automatically)
+                // Don't await - let it run in background
+                fetchContractNames(addressesWithoutSymbol, fetchChainId)
+                    .then(() => {
+                        // Trigger reactivity to show newly cached names
+                        cacheRefreshKey.value++;
+                    })
+                    .catch(() => {});
             }
+        } catch (e) {
+            console.warn("Failed to fetch contract info:", e);
         }
     }
 };
@@ -470,10 +440,11 @@ watch(decoded, (newDecoded) => {
 
 // Watch chain selection and sync to currentChainId
 watch(selectedChain, (newChain) => {
-    if (newChain && newChain !== currentChainId.value) {
+    if (newChain && String(newChain) !== currentChainId.value) {
         console.log("[PayloadParser] Chain selection changed:", currentChainId.value, "->", newChain);
-        currentChainId.value = newChain;
-        // Re-fetch contract info with new chain
+        currentChainId.value = String(newChain);
+
+        // Re-fetch contract info with new chain (cache will handle deduplication)
         if (decoded.value) {
             fetchContractInfoForAddresses();
         }
@@ -484,7 +455,7 @@ watch(selectedChain, (newChain) => {
 onMounted(() => {
     // Sync chain selection on mount
     if (selectedChain.value) {
-        currentChainId.value = selectedChain.value;
+        currentChainId.value = String(selectedChain.value);
     }
 
     // Check cache stats for debugging
@@ -567,7 +538,13 @@ const decode = async () => {
 
         // Update chain and vnet info
         if (parseResult.chainId) {
-            currentChainId.value = parseResult.chainId;
+            currentChainId.value = String(parseResult.chainId);
+        } else if (parseResult.source === "raw" && selectedChain.value) {
+            // For raw payloads, use the user-selected chain
+            currentChainId.value = String(selectedChain.value);
+        } else {
+            // Fallback to Ethereum mainnet for consistency
+            currentChainId.value = "1";
         }
         if (parseResult.vnetRpcUrl) {
             vnetRpcUrl.value = parseResult.vnetRpcUrl;
@@ -644,11 +621,11 @@ const useAlternativeSignature = async (sig) => {
     decoded.value = result;
 };
 
-const openVnetReader = () => {
+const openContractReader = () => {
     if (vnetRpcUrl.value) {
         // Open VNet reader tool with collected addresses
         const addresses = collectedAddresses.value.join(",");
-        const url = `#/vnet-reader?rpc=${encodeURIComponent(vnetRpcUrl.value)}&addresses=${encodeURIComponent(addresses)}`;
+        const url = `#/contract-reader?rpc=${encodeURIComponent(vnetRpcUrl.value)}&addresses=${encodeURIComponent(addresses)}`;
         window.open(url, "_blank");
     }
 };
@@ -671,11 +648,6 @@ const formatEthValue = (value) => {
     } catch {
         return value;
     }
-};
-
-const getExplorerAddressUrl = (addr) => {
-    const url = getExplorerUrl(currentChainId.value, addr, "address");
-    return url || `https://etherscan.io/address/${addr}`;
 };
 
 const jsonReplacer = (key, value) => {

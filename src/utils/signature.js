@@ -6,6 +6,7 @@
  */
 
 import { lookupCommonSignature } from '@/config/signatures.js'
+import { getEthers, createInterface } from './core/ethers.js'
 
 // ============================================================================
 // STORAGE
@@ -32,16 +33,6 @@ const SIGNATURE_IMPORT_URL = 'https://api.4byte.sourcify.dev/signature-database/
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-/**
- * Get ethers from window (CDN loaded)
- */
-function getEthers() {
-  if (typeof window !== 'undefined' && window.ethers) {
-    return window.ethers
-  }
-  throw new Error('ethers.js not loaded')
-}
 
 /**
  * Extract 4-byte selector from payload
@@ -138,11 +129,8 @@ export async function lookupSignature(sighashOrPayload) {
  * @throws {Error} - If signature format is invalid
  */
 export function registerCustomSignature(signature) {
-  const ethers = getEthers()
-  
-  // Parse and validate signature
-  const abi = [`function ${signature}`]
-  const iface = new ethers.utils.Interface(abi)
+  // Parse and validate signature using createInterface from core
+  const iface = createInterface([`function ${signature}`])
   
   // Extract function name and compute selector
   const funcName = signature.split('(')[0]
