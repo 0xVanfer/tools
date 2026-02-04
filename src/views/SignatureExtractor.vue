@@ -2,7 +2,7 @@
     <div class="signature-extractor">
         <PageHeader
             title="Signature Extractor"
-            description="Extract Solidity function and error signatures from GitHub/GitLab repositories or Etherscan contracts"
+            description="Extract Solidity function and error signatures from GitHub/GitLab (including self-hosted) repositories or Etherscan contracts"
         />
 
         <div class="extractor-container">
@@ -17,7 +17,7 @@
                                 v-model="inputUrl"
                                 type="text"
                                 class="input url-input"
-                                placeholder="GitHub/GitLab repo URL or Etherscan contract URL"
+                                placeholder="GitHub/GitLab repo URL, self-hosted GitLab, or Etherscan contract URL"
                                 @input="onUrlChange"
                                 @keydown.enter="extract"
                             />
@@ -54,7 +54,14 @@
                     <!-- Access Token (optional) -->
                     <div v-if="showBranchSection" class="token-section">
                         <label class="label">Access Token (optional, for private repos):</label>
-                        <input v-model="accessToken" type="password" class="input token-input" placeholder="Enter GitHub or GitLab Access Token" />
+                        <input
+                            v-model="accessToken"
+                            type="password"
+                            class="input token-input"
+                            :class="{ 'token-required': tokenRequired }"
+                            placeholder="Enter GitHub or GitLab Access Token"
+                        />
+                        <div v-if="tokenRequired" class="text-sm text-muted token-hint">Access Token may be required for this repository.</div>
                     </div>
 
                     <!-- Source Code Input (alternative) -->
@@ -293,6 +300,7 @@ const examples = [
 const inputUrl = ref("");
 const accessToken = ref("");
 const sourceCode = ref("");
+const tokenRequired = ref(false);
 
 // Branch state
 const branches = ref([]);
@@ -333,6 +341,18 @@ const showBranchSection = computed(() => {
     const parsed = parseRepoUrl(inputUrl.value);
     return parsed && (parsed.platform === "github" || parsed.platform === "gitlab");
 });
+
+const isAuthError = (err) => {
+    const message = (err?.message || String(err || "")).toLowerCase();
+    return (
+        message.includes("401") ||
+        message.includes("403") ||
+        message.includes("authentication") ||
+        message.includes("access denied") ||
+        message.includes("private") ||
+        message.includes("rate limit")
+    );
+};
 
 const filteredSignatures = computed(() => {
     let list = signatures.value;
@@ -403,6 +423,7 @@ let urlChangeTimeout = null;
 function onUrlChange() {
     clearTimeout(urlChangeTimeout);
     branches.value = [];
+    tokenRequired.value = false;
 
     const parsed = parseRepoUrl(inputUrl.value);
     if (parsed && (parsed.platform === "github" || parsed.platform === "gitlab")) {
@@ -418,6 +439,7 @@ async function loadBranches() {
     if (!parsed || parsed.platform === "etherscan") return;
 
     loadingBranches.value = true;
+    tokenRequired.value = false;
 
     try {
         if (parsed.platform === "github") {
@@ -426,6 +448,9 @@ async function loadBranches() {
                 headers["Authorization"] = "token " + accessToken.value;
             }
             const response = await fetch("https://api.github.com/repos/" + parsed.owner + "/" + parsed.repo + "/branches", { headers });
+            if (!response.ok) {
+                throw new Error("GitHub API error: " + response.status);
+            }
             if (response.ok) {
                 const data = await response.json();
                 branches.value = data.map((b) => b.name);
@@ -440,6 +465,9 @@ async function loadBranches() {
                 headers["PRIVATE-TOKEN"] = accessToken.value;
             }
             const response = await fetch(parsed.host + "/api/v4/projects/" + projectId + "/repository/branches", { headers });
+            if (!response.ok) {
+                throw new Error("GitLab API error: " + response.status);
+            }
             if (response.ok) {
                 const data = await response.json();
                 branches.value = data.map((b) => b.name);
@@ -450,6 +478,9 @@ async function loadBranches() {
         }
     } catch (e) {
         console.warn("Failed to load branches:", e);
+        if (isAuthError(e) && !accessToken.value.trim()) {
+            tokenRequired.value = true;
+        }
     } finally {
         loadingBranches.value = false;
     }
@@ -461,6 +492,7 @@ async function extract() {
 
     loading.value = true;
     error.value = null;
+    tokenRequired.value = false;
     signatures.value = [];
     stats.value = { functions: 0, errors: 0, files: 0 };
     proxyInfo.value = null;
@@ -470,7 +502,7 @@ async function extract() {
     try {
         const parsed = parseRepoUrl(url);
         if (!parsed) {
-            throw new Error("Invalid URL format. Use GitHub, GitLab, or Etherscan URLs.");
+            throw new Error("Invalid URL format. Use GitHub, GitLab (including self-hosted), or Etherscan URLs.");
         }
 
         const files = [];
@@ -503,11 +535,26 @@ async function extract() {
         }, 1000);
     } catch (e) {
         error.value = e.message;
+        if (isAuthError(e) && !accessToken.value.trim()) {
+            tokenRequired.value = true;
+        }
         progress.value = null;
     } finally {
         loading.value = false;
     }
 }
+
+watch(accessToken, (value) => {
+    if (tokenRequired.value && value.trim()) {
+        tokenRequired.value = false;
+    }
+
+    const parsed = parseRepoUrl(inputUrl.value);
+    if (parsed && (parsed.platform === "github" || parsed.platform === "gitlab")) {
+        clearTimeout(urlChangeTimeout);
+        urlChangeTimeout = setTimeout(loadBranches, 300);
+    }
+});
 
 async function extractFromGitHub(parsed, files) {
     progress.value = { percent: 10, message: "Fetching repository tree..." };
@@ -899,6 +946,26 @@ async function uploadTo4byte() {
 
 .token-input {
     max-width: 400px;
+}
+
+.token-input.token-required {
+    border-color: var(--color-accent-warning);
+    background: rgba(245, 158, 11, 0.08);
+    animation: pulse-warning 1.5s ease-in-out infinite;
+}
+
+.token-hint {
+    margin-top: var(--space-2);
+}
+
+@keyframes pulse-warning {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.35);
+    }
+    50% {
+        box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
+    }
 }
 
 .source-code-section {

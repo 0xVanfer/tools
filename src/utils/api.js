@@ -56,10 +56,12 @@ export function extractContractAddress(url) {
  * Parse GitHub/GitLab/Etherscan URL
  */
 export function parseRepoUrl(url) {
+  if (!url) return null
+  const normalizedUrl = url.trim().replace(/#L\d+(-L\d+)?$/, '')
   // Check for Etherscan-compatible explorer URLs first
-  if (isEtherscanLink(url)) {
-    const chainId = getChainIdFromExplorerUrl(url)
-    const address = extractContractAddress(url)
+  if (isEtherscanLink(normalizedUrl)) {
+    const chainId = getChainIdFromExplorerUrl(normalizedUrl)
+    const address = extractContractAddress(normalizedUrl)
     if (chainId && address) {
       return {
         platform: 'etherscan',
@@ -70,7 +72,7 @@ export function parseRepoUrl(url) {
   }
   
   // GitHub: https://github.com/owner/repo[/tree/branch/path]
-  const githubMatch = url.match(/github\.com\/([^/]+)\/([^/]+)(?:\/(?:tree|blob)\/([^/]+)(?:\/(.*))?)?/)
+  const githubMatch = normalizedUrl.match(/github\.com\/([^/]+)\/([^/]+)(?:\/(?:tree|blob)\/([^/]+)(?:\/(.*))?)?/)
   if (githubMatch) {
     return {
       platform: 'github',
@@ -82,14 +84,31 @@ export function parseRepoUrl(url) {
   }
   
   // GitLab: https://gitlab.com/group/project[/-/tree/branch/path]
-  const gitlabMatch = url.match(/gitlab\.com\/(.+?)(?:\/-\/(?:tree|blob)\/([^/]+)(?:\/(.*))?)?$/)
+  const gitlabMatch = normalizedUrl.match(/gitlab\.com\/(.+?)(?:\/-\/(?:tree|blob)\/([^/]+)(?:\/(.*))?)?$/)
   if (gitlabMatch) {
     return {
       platform: 'gitlab',
       host: 'https://gitlab.com',
       projectPath: gitlabMatch[1].replace(/\.git$/, ''),
+      fullPath: gitlabMatch[1].replace(/\.git$/, ''),
       branch: gitlabMatch[2] || 'main',
       path: gitlabMatch[3] || '',
+      isSelfHosted: false,
+    }
+  }
+
+  // Self-hosted GitLab: http://host/group/project or http://host/group/project/-/tree/branch/path
+  const selfHostedMatch = normalizedUrl.match(/^(https?:\/\/[^/]+)\/(.+?)(?:\/-\/(?:tree|blob)\/([^/]+)(?:\/(.*))?)?$/)
+  if (selfHostedMatch) {
+    const projectPath = selfHostedMatch[2].replace(/\.git$/, '')
+    return {
+      platform: 'gitlab',
+      host: selfHostedMatch[1],
+      projectPath,
+      fullPath: projectPath,
+      branch: selfHostedMatch[3] || 'main',
+      path: selfHostedMatch[4] || '',
+      isSelfHosted: true,
     }
   }
   
