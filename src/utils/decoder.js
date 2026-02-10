@@ -412,11 +412,31 @@ export async function findAndDecodeNestedBytes(params, depth = 0, maxDepth = 3, 
   if (depth >= maxDepth || !Array.isArray(params)) return params
   
   const results = []
+  const normalizedParent = (parentFunctionName || '').trim()
+  const shouldSkipExecTransactionBytes = (typeStr, components) => {
+    const normalizedType = (typeStr || '').replace(/\s+/g, '')
+    if (normalizedType === 'tuple(uint256,address,uint256,bytes,bytes,bytes)') return true
+    if (!Array.isArray(components) || components.length !== 6) return false
+    const types = components.map(comp => (comp?.type || '').replace(/\s+/g, ''))
+    return (
+      types[0]?.startsWith('uint') &&
+      types[1] === 'address' &&
+      types[2]?.startsWith('uint') &&
+      types[3] === 'bytes' &&
+      types[4] === 'bytes' &&
+      types[5] === 'bytes'
+    )
+  }
   
   for (const param of params) {
     const result = { ...param }
     const paramType = param.type || param.AbiType || ''
     const paramValue = param.value || param.Value
+
+    if (param.skipNestedDecoding) {
+      results.push(result)
+      continue
+    }
     
     // Special case: multiSend(bytes) - packed bytes format
     if (parentFunctionName === 'multiSend' && paramType === 'bytes' && paramValue) {
@@ -506,7 +526,16 @@ export async function findAndDecodeNestedBytes(params, depth = 0, maxDepth = 3, 
     else if (paramType.startsWith('tuple')) {
       const tupleComponents = param.components || parseTupleValue(paramValue, paramType)
       if (Array.isArray(tupleComponents)) {
-        const decodedComponents = await findAndDecodeNestedBytes(tupleComponents, depth, maxDepth, parentFunctionName)
+        let componentsToDecode = tupleComponents
+        if (normalizedParent === 'execTransaction' && shouldSkipExecTransactionBytes(paramType, tupleComponents)) {
+          componentsToDecode = tupleComponents.map((comp, index) => {
+            if (index >= 4 && comp?.type === 'bytes') {
+              return { ...comp, skipNestedDecoding: true }
+            }
+            return comp
+          })
+        }
+        const decodedComponents = await findAndDecodeNestedBytes(componentsToDecode, depth, maxDepth, parentFunctionName)
         if (decodedComponents !== tupleComponents) {
           result.components = decodedComponents
         }
@@ -865,7 +894,12 @@ export async function decodePayload(payload, options = {}) {
     if (!result.error) {
       // Try nested bytes decoding
       if (recursive && depth < maxDepth) {
-        result.params = await findAndDecodeNestedBytes(result.params, depth, maxDepth)
+        result.params = await findAndDecodeNestedBytes(
+          result.params,
+          depth,
+          maxDepth,
+          result.name || result.signature?.split('(')[0] || ''
+        )
       }
       return result
     }
@@ -883,7 +917,12 @@ export async function decodePayload(payload, options = {}) {
       }
       
       if (recursive && depth < maxDepth) {
-        result.params = await findAndDecodeNestedBytes(result.params, depth, maxDepth)
+        result.params = await findAndDecodeNestedBytes(
+          result.params,
+          depth,
+          maxDepth,
+          result.name || result.signature?.split('(')[0] || ''
+        )
       }
       return result
     }
@@ -906,7 +945,12 @@ export async function decodePayload(payload, options = {}) {
           }
           
           if (recursive && depth < maxDepth) {
-            result.params = await findAndDecodeNestedBytes(result.params, depth, maxDepth)
+            result.params = await findAndDecodeNestedBytes(
+              result.params,
+              depth,
+              maxDepth,
+              result.name || result.signature?.split('(')[0] || ''
+            )
           }
           return result
         }

@@ -62,7 +62,10 @@
                         <div class="array-container">[</div>
                         <div v-for="(item, i) in param.value" :key="i" class="array-item">
                             <template v-if="param.decodedArray?.[i]">
-                                <div class="decoded-bytes-header">→ {{ param.decodedArray[i].signature }}</div>
+                                <div class="decoded-bytes-header">
+                                    → {{ param.decodedArray[i].signature }}
+                                    <button type="button" class="copy-btn raw-copy" @click="copy(item)">copy raw data</button>
+                                </div>
                                 <ParameterList
                                     v-if="param.decodedArray[i].params?.length"
                                     :params="param.decodedArray[i].params"
@@ -140,14 +143,20 @@
                             <span class="uint256-value">{{ tx.value }}</span>
                         </div>
                         <ParameterList v-if="tx.decoded?.params?.length" :params="tx.decoded.params" :chain-id="chainId" :depth="depth + 1" />
-                        <div v-else-if="tx.data && tx.data !== '0x'" class="raw-payload">{{ truncateBytes(tx.data) }}</div>
+                        <div v-else-if="tx.data && tx.data !== '0x'" class="raw-payload">
+                            {{ truncateBytes(tx.data) }}
+                            <button type="button" class="copy-btn raw-copy" @click="copy(tx.data)">copy raw data</button>
+                        </div>
                     </div>
                 </template>
 
                 <!-- Bytes with decoded content -->
                 <template v-else-if="param.decoded">
                     <div class="decoded-bytes">
-                        <div class="decoded-bytes-header">→ {{ param.decoded.signature }}</div>
+                        <div class="decoded-bytes-header">
+                            → {{ param.decoded.signature }}
+                            <button type="button" class="copy-btn raw-copy" @click="copy(param.value)">copy raw data</button>
+                        </div>
                         <ParameterList v-if="param.decoded.params?.length" :params="param.decoded.params" :chain-id="chainId" :depth="depth + 1" />
                     </div>
                 </template>
@@ -529,6 +538,9 @@ const formatValue = (value) => {
 }
 
 .decoded-bytes-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     font-family: "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", monospace;
     font-weight: 600;
     color: var(--color-primary, #1565c0);
