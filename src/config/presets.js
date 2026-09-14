@@ -1,7 +1,10 @@
 /**
  * Preset Methods Configuration
- * 
- * Pre-defined methods for VNet Reader, organized by category.
+ *
+ * Pre-defined ABI-style methods for contract reading, organized by category.
+ *
+ * NOTE: currently unused — `ContractReader.vue` defines its own inline preset
+ * list. Kept as a reference/extension point for a shared preset module.
  */
 
 export const PRESET_METHODS = {

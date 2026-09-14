@@ -331,7 +331,7 @@ export function getCacheStats() {
 
 /**
  * Get addresses marked as VNet default for a specific chain.
- * These addresses will be shown in VNet Reader dropdown by default.
+ * These addresses will be shown in the Contract Reader address dropdown by default.
  * @param {string|number} chainId - The chain ID
  * @returns {Array<{address: string, symbol: string|null, name: string|null, customName: string|null}>}
  */

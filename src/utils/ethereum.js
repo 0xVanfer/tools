@@ -46,7 +46,10 @@ export {
  * @returns {string|null} 4-byte selector or null
  */
 export function getSelector(data) {
-  if (!data || data.length < 10) return null
+  if (typeof data !== 'string') return null
+  // Must be 0x-prefixed hex with at least 4 bytes, otherwise slicing arbitrary
+  // text (e.g. "hello world") would produce a bogus "selector".
+  if (!/^0[xX][0-9a-fA-F]{8}/.test(data)) return null
   return data.slice(0, 10).toLowerCase()
 }
 

@@ -22,8 +22,8 @@ export function useChain(defaultChainId = 1) {
     chainId.value = Number(id)
   }
   
-  function explorerUrl(type, value) {
-    return getExplorerUrl(chainId.value, type, value)
+  function explorerUrl(value, type = 'address') {
+    return getExplorerUrl(chainId.value, value, type)
   }
   
   return {

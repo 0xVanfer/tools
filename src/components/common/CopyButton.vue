@@ -31,7 +31,7 @@ const props = defineProps({
 
 const emit = defineEmits(["copied"]);
 
-const { copy, isCopied } = useClipboard();
+const { copy, copied: isCopied } = useClipboard();
 
 const handleCopy = async () => {
     if (props.text) {

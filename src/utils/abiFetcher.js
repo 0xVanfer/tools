@@ -7,11 +7,16 @@
  */
 
 import { getContractCache, setContractCache } from './cacheManager.js'
-import { buildApiUrl, fetchContractABI as fetchAbiFromEtherscan } from './core/etherscan.js'
+import { fetchContractABI as fetchAbiFromEtherscan } from './core/etherscan.js'
+import { getProxyImplementation } from './api.js'
+import { isValidAddress } from './core/address.js'
 
 /**
  * Fetch ABI for a contract, with proxy detection and caching.
- * 
+ *
+ * For proxy contracts the implementation ABI is fetched and merged with the
+ * proxy's own ABI, so read calls exposed by the implementation show up.
+ *
  * @param {string|number} chainId - Chain ID
  * @param {string} address - Contract address
  * @returns {Promise<{abi: Object[], isProxy: boolean, implementation: string|null}>}
@@ -20,23 +25,69 @@ export async function fetchContractABI(chainId, address) {
   // Check cache first
   const cached = getAbiFromCache(chainId, address)
   if (cached) return cached
-  
+
   // Fetch from Etherscan
   const abi = await fetchAbiFromEtherscan(chainId, address)
   const filtered = filterAbi(abi)
-  
+
   if (!filtered) {
     throw new Error('No valid ABI entries found')
   }
-  
-  // Cache the result
-  setContractCache(address, { abi: filtered }, String(chainId))
-  
+
+  // Resolve the implementation for proxy contracts (best effort).
+  let implementation = null
+  try {
+    implementation = await getProxyImplementation(chainId, address)
+  } catch {
+    implementation = null
+  }
+
+  if (
+    implementation &&
+    isValidAddress(implementation) &&
+    implementation.toLowerCase() !== address.toLowerCase()
+  ) {
+    try {
+      const implAbi = filterAbi(await fetchAbiFromEtherscan(chainId, implementation))
+      if (implAbi) {
+        const merged = mergeAbis(filtered, implAbi)
+        setContractCache(address, { abi: merged, isProxy: true, implementation }, String(chainId))
+        return { abi: merged, isProxy: true, implementation }
+      }
+    } catch {
+      // Fall through and cache the proxy ABI on its own.
+    }
+  }
+
+  setContractCache(address, { abi: filtered, isProxy: false, implementation: null }, String(chainId))
+
   return {
     abi: filtered,
     isProxy: false,
     implementation: null
   }
+}
+
+/**
+ * Merge a proxy ABI with its implementation ABI, de-duplicating by fragment.
+ */
+function mergeAbis(primary, secondary) {
+  const seen = new Set()
+  const merged = []
+
+  const keyOf = (item) => {
+    const inputs = (item.inputs || []).map(i => i.type).join(',')
+    return `${item.type}:${item.name || ''}(${inputs})`
+  }
+
+  for (const item of [...primary, ...secondary]) {
+    const key = keyOf(item)
+    if (seen.has(key)) continue
+    seen.add(key)
+    merged.push(item)
+  }
+
+  return merged
 }
 
 /**

@@ -4,12 +4,7 @@
 
 import { setItemWithExpiry, getItemWithExpiry } from './storage.js'
 import { EXPLORER_CHAIN_MAP } from './chains.js'
-import {
-  getNextApiKey,
-  isRoutescanChain,
-  getEtherscanApiUrl,
-  fetchFromEtherscan,
-} from './core/etherscan.js'
+import { fetchFromEtherscan } from './core/etherscan.js'
 
 const CACHE_TTL = 1000 * 60 * 60 // 1 hour
 
@@ -53,6 +48,15 @@ export function extractContractAddress(url) {
 }
 
 /**
+ * Hosts that must never be interpreted as a self-hosted GitLab instance.
+ * Mostly reserved/documentation domains that would otherwise be swallowed by the
+ * permissive self-hosted fallback.
+ */
+const NON_GITLAB_HOSTS = new Set([
+  'example.com', 'example.org', 'example.net', 'localhost', '127.0.0.1', '0.0.0.0',
+])
+
+/**
  * Parse GitHub/GitLab/Etherscan URL
  */
 export function parseRepoUrl(url) {
@@ -79,6 +83,9 @@ export function parseRepoUrl(url) {
       owner: githubMatch[1],
       repo: githubMatch[2].replace(/\.git$/, ''),
       branch: githubMatch[3] || 'main',
+      // Distinguishes an explicit /tree/<branch> URL from the default, so callers
+      // can honour the URL's branch instead of always preferring their own state.
+      branchSpecified: !!githubMatch[3],
       path: githubMatch[4] || '',
     }
   }
@@ -92,23 +99,48 @@ export function parseRepoUrl(url) {
       projectPath: gitlabMatch[1].replace(/\.git$/, ''),
       fullPath: gitlabMatch[1].replace(/\.git$/, ''),
       branch: gitlabMatch[2] || 'main',
+      branchSpecified: !!gitlabMatch[2],
       path: gitlabMatch[3] || '',
       isSelfHosted: false,
     }
   }
 
   // Self-hosted GitLab: http://host/group/project or http://host/group/project/-/tree/branch/path
+  // This is the last resort, so it must not swallow unrelated URLs: previously it
+  // matched ANY http(s) URL (e.g. an explorer link) and claimed it was GitLab.
   const selfHostedMatch = normalizedUrl.match(/^(https?:\/\/[^/]+)\/(.+?)(?:\/-\/(?:tree|blob)\/([^/]+)(?:\/(.*))?)?$/)
   if (selfHostedMatch) {
+    const host = selfHostedMatch[1]
     const projectPath = selfHostedMatch[2].replace(/\.git$/, '')
-    return {
-      platform: 'gitlab',
-      host: selfHostedMatch[1],
-      projectPath,
-      fullPath: projectPath,
-      branch: selfHostedMatch[3] || 'main',
-      path: selfHostedMatch[4] || '',
-      isSelfHosted: true,
+    let hostname = ''
+    try {
+      hostname = new URL(host).hostname.replace(/^www\./, '')
+    } catch {
+      hostname = ''
+    }
+    const isKnownExplorer = Object.keys(EXPLORER_CHAIN_MAP).some(
+      domain => hostname === domain || hostname.endsWith('.' + domain)
+    )
+    const looksLikeExplorerPath = /(^|\/)(tx|address|token|block|transactions)(\/|$)/.test(projectPath)
+    const looksLikeGitLab = hostname.includes('gitlab')
+    // Accept only GitLab-looking hosts, or custom hosts whose path is not an
+    // explorer path and has at least a group/project pair.
+    if (
+      !isKnownExplorer &&
+      !NON_GITLAB_HOSTS.has(hostname) &&
+      !looksLikeExplorerPath &&
+      (looksLikeGitLab || projectPath.split('/').length >= 2)
+    ) {
+      return {
+        platform: 'gitlab',
+        host,
+        projectPath,
+        fullPath: projectPath,
+        branch: selfHostedMatch[3] || 'main',
+        branchSpecified: !!selfHostedMatch[3],
+        path: selfHostedMatch[4] || '',
+        isSelfHosted: true,
+      }
     }
   }
   
@@ -119,7 +151,9 @@ export function parseRepoUrl(url) {
  * GitHub API - Fetch repository tree
  */
 export async function fetchGitHubTree(owner, repo, branch = 'main', token = null) {
-  const cacheKey = `github:tree:${owner}/${repo}/${branch}`
+  // Include a token discriminator: a tree fetched with a token must not be
+  // served to later unauthenticated requests (and vice versa).
+  const cacheKey = `github:tree:${owner}/${repo}/${branch}${token ? ':auth' : ''}`
   const cached = getItemWithExpiry(cacheKey)
   if (cached) return cached
   
@@ -168,17 +202,21 @@ export async function fetchGitHubFile(urlOrPath, repo, path, branch = 'main', to
     branchName = branch
   }
   
-  const headers = {
-    'Accept': 'application/vnd.github.v3.raw',
-  }
+  const headers = {}
   if (token) {
     headers['Authorization'] = `token ${token}`
   }
-  
-  const response = await fetch(
-    `https://raw.githubusercontent.com/${owner}/${repoName}/${branchName}/${filePath}`,
-    { headers }
-  )
+
+  // raw.githubusercontent.com cannot serve private repositories, so use the
+  // authenticated contents API when a token is supplied.
+  const encodedPath = filePath.split('/').map(encodeURIComponent).join('/')
+  const requestUrl = token
+    ? `https://api.github.com/repos/${owner}/${repoName}/contents/${encodedPath}?ref=${encodeURIComponent(branchName)}`
+    : `https://raw.githubusercontent.com/${owner}/${repoName}/${branchName}/${encodedPath}`
+
+  if (token) headers['Accept'] = 'application/vnd.github.raw'
+
+  const response = await fetch(requestUrl, { headers })
   
   if (!response.ok) {
     throw new Error(`Failed to fetch file: ${response.status}`)
@@ -250,17 +288,31 @@ export async function fetchGitLabTree(host, projectPath, branch = 'main', token 
   if (token) {
     headers['PRIVATE-TOKEN'] = token
   }
-  
-  const response = await fetch(
-    `${host}/api/v4/projects/${projectId}/repository/tree?ref=${branch}&recursive=true&per_page=100`,
-    { headers }
-  )
-  
-  if (!response.ok) {
-    throw new Error(`GitLab API error: ${response.status}`)
+
+  // GitLab paginates at 100 entries per page; without following the pages a
+  // large repository silently loses every file after the first 100.
+  const allEntries = []
+  let page = 1
+
+  while (page > 0) {
+    const response = await fetch(
+      `${host}/api/v4/projects/${projectId}/repository/tree?ref=${encodeURIComponent(branch)}&recursive=true&per_page=100&page=${page}`,
+      { headers }
+    )
+
+    if (!response.ok) {
+      throw new Error(`GitLab API error: ${response.status}`)
+    }
+
+    const entries = await response.json()
+    if (Array.isArray(entries)) allEntries.push(...entries)
+
+    const nextPage = response.headers.get('X-Next-Page')
+    page = nextPage ? Number(nextPage) : 0
+    if (!Number.isFinite(page) || page <= 0) break
   }
-  
-  return response.json()
+
+  return allEntries
 }
 
 /**
@@ -328,16 +380,20 @@ export async function upload4byte(signatures) {
  * @returns {Promise<Object>} Source code result object
  */
 export async function fetchEtherscanSource(chainId, address) {
+  // `tolerateError` lets the API's status-0 payload through so the caller can
+  // report "not verified" instead of the raw API string.
   const data = await fetchFromEtherscan(chainId, {
     module: 'contract',
     action: 'getsourcecode',
     address
-  })
+  }, { tolerateError: true })
   
   const result = data.result?.[0]
   
   if (!result?.SourceCode && !result?.ABI) {
-    throw new Error('Contract is not verified on Etherscan')
+    throw new Error(typeof data.result === 'string' && data.result
+      ? data.result
+      : 'Contract is not verified on Etherscan')
   }
   
   return result
@@ -389,6 +445,7 @@ export async function getProxyImplementation(chainId, address) {
  * Storage key for contract info cache
  */
 const CONTRACT_INFO_CACHE_KEY = 'contract_info_cache'
+const CONTRACT_INFO_TTL = 1000 * 60 * 60 // 1 hour
 
 /**
  * Get cached contract info
@@ -397,7 +454,11 @@ export function getCachedContractInfo(address, chainId = '1') {
   try {
     const cache = JSON.parse(localStorage.getItem(CONTRACT_INFO_CACHE_KEY) || '{}')
     const key = `${chainId}:${address.toLowerCase()}`
-    return cache[key] || cache[`0:${address.toLowerCase()}`] // Also check global (chainId 0)
+    const entry = cache[key]
+    if (!entry) return null
+    // Expire stale entries instead of returning them forever.
+    if (entry.cachedAt && Date.now() - entry.cachedAt > CONTRACT_INFO_TTL) return null
+    return entry
   } catch {
     return null
   }

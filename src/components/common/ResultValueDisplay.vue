@@ -9,7 +9,7 @@
                     :output-types="[item.type]"
                     :chain-id="chainId"
                     :decimals-map="decimalsMap"
-                    :item-index="index"
+                    :item-index="childIndex(index)"
                     :compare-value="getCompareItemValue(index)"
                     @update:decimals="(idx, val) => $emit('update:decimals', idx, val)"
                 />
@@ -25,7 +25,8 @@
                     :output-types="[getArrayElementType()]"
                     :chain-id="chainId"
                     :decimals-map="decimalsMap"
-                    :item-index="itemIndex"
+                    :item-index="childIndex(index)"
+                    :compare-value="getCompareItemValue(index)"
                     @update:decimals="(idx, val) => $emit('update:decimals', idx, val)"
                 />
             </div>
@@ -106,7 +107,7 @@ const props = defineProps({
         default: () => ({}),
     },
     itemIndex: {
-        type: Number,
+        type: [Number, String],
         default: 0,
     },
     compareValue: {
@@ -129,6 +130,12 @@ watch(
 
 function onDecimalsChange() {
     emit("update:decimals", props.itemIndex, localDecimals.value);
+}
+
+// Composite key for nested values (array element / tuple item) so that each one
+// keeps its own decimals setting instead of sharing the parent's index.
+function childIndex(index) {
+    return `${props.itemIndex}.${index}`;
 }
 
 // Get compare value for tuple item
@@ -169,14 +176,6 @@ const isTupleResult = computed(() => {
                 valueLength = Object.keys(props.value).filter((k) => !isNaN(parseInt(k))).length;
             }
 
-            console.log("[ResultValueDisplay] isTupleResult check:", {
-                outputTypesLength: props.outputTypes.length,
-                valueLength,
-                valueType: typeof props.value,
-                isArray: Array.isArray(props.value),
-                value: props.value,
-            });
-
             return valueLength === props.outputTypes.length;
         }
         return false;
@@ -207,11 +206,6 @@ const tupleItems = computed(() => {
     } else {
         valueArray = [props.value];
     }
-
-    console.log("[ResultValueDisplay] tupleItems:", {
-        valueArray,
-        outputTypes: props.outputTypes,
-    });
 
     // Multiple output types
     if (props.outputTypes.length > 1) {
@@ -318,8 +312,7 @@ const booleanValue = computed(() => {
 // Address display
 const explorerLink = computed(() => {
     if (!isAddress.value || !props.chainId) return "#";
-    const baseUrl = getExplorerUrl(props.chainId);
-    return baseUrl ? `${baseUrl}/address/${stringValue.value}` : "#";
+    return getExplorerUrl(props.chainId, stringValue.value, "address") || "#";
 });
 
 const formattedAddress = computed(() => {

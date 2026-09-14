@@ -127,17 +127,33 @@ function collectFromParams(params) {
         collectAddress(addr)
       }
     }
-    // Tuple containing addresses
-    else if (type.startsWith('tuple') && param.components) {
+    
+    // Tuple components (single tuple). NOTE: these checks are independent of the
+    // type branches above — a tuple array reports `type` as `tuple(...)[]` and
+    // stores its per-item components in `itemComponents`, which the previous
+    // `else if` chain never reached.
+    if (Array.isArray(param.components)) {
       collectFromParams(param.components)
     }
+    
+    if (Array.isArray(param.itemComponents)) {
+      for (const item of param.itemComponents) {
+        if (item) collectFromParams(item)
+      }
+    }
+    
     // Nested decoded bytes
-    else if (param.decoded) {
+    if (param.decoded) {
       collectFromDecoded(param.decoded)
     }
-    else if (param.decodedArray) {
+    if (param.decodedArray) {
       for (const d of param.decodedArray) {
         if (d) collectFromDecoded(d)
+      }
+    }
+    if (Array.isArray(param.decodedTuples)) {
+      for (const tuple of param.decodedTuples) {
+        if (Array.isArray(tuple)) collectFromParams(tuple)
       }
     }
   }

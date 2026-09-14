@@ -95,6 +95,43 @@ class Parser {
     return match ? match[2] : null
   }
 
+  /**
+   * Find the innermost contract/library/interface enclosing a source offset.
+   *
+   * Previously a single file-wide container name was applied to every struct and
+   * enum, so in a file with several contracts all of them were attributed to the
+   * first one (and qualified lookups silently resolved to the wrong struct).
+   */
+  containerAt(content, position) {
+    const pattern = /\b(library|contract|interface)\s+(\w+)\s*\{/g
+    const spans = []
+    let match
+
+    while ((match = pattern.exec(content)) !== null) {
+      if (match.index > position) break
+
+      const openBrace = match.index + match[0].length - 1
+      let depth = 0
+      let end = openBrace
+      for (; end < content.length; end++) {
+        if (content[end] === '{') depth++
+        else if (content[end] === '}') {
+          depth--
+          if (depth === 0) break
+        }
+      }
+
+      if (end >= position) {
+        spans.push({ name: match[2], start: match.index, end })
+      }
+    }
+
+    if (spans.length === 0) return null
+    // Innermost = smallest enclosing span.
+    spans.sort((a, b) => (a.end - a.start) - (b.end - b.start))
+    return spans[0].name
+  }
+
   parseStructBody(body) {
     const fields = []
     const lines = body.split(';')
@@ -115,12 +152,12 @@ class Parser {
 
   extractEnums(content, filePath) {
     const enumNames = []
-    const containerName = this.extractContainerName(content)
     const pattern = /\benum\s+(\w+)\s*\{/g
 
     let match
     while ((match = pattern.exec(content)) !== null) {
       const enumName = match[1]
+      const containerName = this.containerAt(content, match.index)
       const qualifiedName = containerName ? `${containerName}.${enumName}` : enumName
       enumNames.push(enumName)
       enumNames.push(qualifiedName)
@@ -131,12 +168,12 @@ class Parser {
 
   extractStructs(content, filePath) {
     const structs = []
-    const containerName = this.extractContainerName(content)
     const pattern = /\bstruct\s+(\w+)\s*\{/g
 
     let match
     while ((match = pattern.exec(content)) !== null) {
       const structName = match[1]
+      const containerName = this.containerAt(content, match.index)
       const startPos = match.index + match[0].length
 
       let braceCount = 1
@@ -239,9 +276,10 @@ class Parser {
       }
       const modifiers = contentNormalized.substring(pos, restEnd).toLowerCase()
 
-      let visibility = 'internal'
+      // Pre-0.5 Solidity defaults to `public` when no visibility keyword is given;
+      // defaulting to `internal` silently dropped legacy functions.
+      let visibility = 'public'
       if (modifiers.includes('external')) visibility = 'external'
-      else if (modifiers.includes('public')) visibility = 'public'
       else if (modifiers.includes('private')) visibility = 'private'
       else if (modifiers.includes('internal')) visibility = 'internal'
 
@@ -264,7 +302,8 @@ class Parser {
         parameters: params,
         sourceFile: filePath,
         originalLine: `function ${funcName}(${paramsStr})`,
-        visibility
+        visibility,
+        container: this.containerAt(contentNormalized, match.index)
       })
     }
 
@@ -312,8 +351,12 @@ class Parser {
 
     const structs = this.extractStructs(content, filePath)
     for (const struct of structs) {
-      this.structs.set(struct.name, struct)
+      // Qualify first so a duplicate short name in another contract cannot
+      // silently overwrite the definition used for type flattening.
       this.qualifiedStructs.set(struct.qualifiedName, struct)
+      if (!this.structs.has(struct.name)) {
+        this.structs.set(struct.name, struct)
+      }
     }
 
     const functions = this.extractFunctions(content, filePath)
@@ -368,9 +411,14 @@ class TypeFlattener {
     return typeName + arraySuffix
   }
 
-  findStruct(typeName) {
+  findStruct(typeName, container = null) {
     if (this.qualifiedStructs.has(typeName)) {
       return this.qualifiedStructs.get(typeName)
+    }
+    // Resolve an unqualified struct name against the enclosing contract first.
+    if (container) {
+      const scoped = this.qualifiedStructs.get(`${container}.${typeName}`)
+      if (scoped) return scoped
     }
     if (this.structs.has(typeName)) {
       return this.structs.get(typeName)
@@ -382,7 +430,7 @@ class TypeFlattener {
     return null
   }
 
-  flattenType(typeName, depth = 0) {
+  flattenType(typeName, depth = 0, container = null) {
     if (depth > 20) return typeName
 
     typeName = typeName.trim().replace(/\s+/g, '')
@@ -410,13 +458,13 @@ class TypeFlattener {
       return `address${arraySuffix}`
     }
 
-    const struct = this.findStruct(baseType)
+    const struct = this.findStruct(baseType, container)
     if (struct) {
       this._recursionGuard.add(baseType)
 
       const flattenedFields = []
       for (const field of struct.fields) {
-        const flatType = this.flattenType(field.typeName, depth + 1)
+        const flatType = this.flattenType(field.typeName, depth + 1, container)
         flattenedFields.push(flatType)
       }
 
@@ -439,7 +487,7 @@ class TypeFlattener {
     this._recursionGuard.clear()
     const flatParams = func.parameters.map(([typeName]) => {
       const cleanType = typeName.trim().replace(/\s+/g, ' ')
-      return this.flattenType(cleanType)
+      return this.flattenType(cleanType, 0, func.container)
     })
     return `${func.name}(${flatParams.join(',')})`
   }

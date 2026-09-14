@@ -43,7 +43,7 @@
 <script setup>
 import { ref, computed } from "vue";
 import { PageHeader, SearchInput, EmptyState } from "@/components";
-import { chains } from "@/utils/chains";
+import { chains, getExplorerUrl } from "@/utils/chains";
 
 const searchQuery = ref("");
 const chainFilter = ref("");
@@ -88,7 +88,21 @@ const getExplorerName = (chain) => {
 };
 
 /**
- * Get explorer link - auto-detect type from query or go to home
+ * Classify the query so we can build a direct explorer path.
+ */
+const detectQueryType = (query) => {
+    if (/^0x[a-fA-F0-9]{64}$/.test(query)) return "tx";
+    if (/^0x[a-fA-F0-9]{40}$/.test(query)) return "address";
+    if (/^\d+$/.test(query)) return "block";
+    return null;
+};
+
+/**
+ * Get explorer link - auto-detect type from query or go to home.
+ *
+ * Uses the per-chain path builder for address/tx/block and only falls back to the
+ * generic `/search?q=` endpoint for free-text queries (the previous code always
+ * used `/search`, which is wrong for non-Etherscan explorers).
  */
 const getExplorerLink = (chain) => {
     const query = searchQuery.value.trim();
@@ -98,8 +112,12 @@ const getExplorerLink = (chain) => {
         return chain.explorer;
     }
 
-    // Auto-detect type and redirect to search
-    // Most explorers have a unified search endpoint
+    const type = detectQueryType(query);
+    if (type) {
+        const direct = getExplorerUrl(chain.chainId, query, type);
+        if (direct) return direct;
+    }
+
     return `${chain.explorer}/search?q=${encodeURIComponent(query)}`;
 };
 </script>

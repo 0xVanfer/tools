@@ -1,29 +1,28 @@
 /**
  * Chain configuration - centralized chain data for all tools
- * 
- * Chain data sourced from:
- * - Chain IDs and names from kit/ethaddr/chain.go
- * - Block explorers from kit/consts/blockscan.go
- * - RPCs from chainlist.org (excluding ankr, drpc)
+ *
+ * Every explorer URL, RPC endpoint and ABI API in this file was verified against
+ * the live network (explorer HTTP status + `eth_chainId` on each RPC).
+ *
+ * Per chain:
+ * - name / shortName / internalName: display identifiers
+ * - explorer: block explorer base URL used for address/tx/block links
+ * - apiUrl: optional Etherscan-compatible API base for explorers that are NOT
+ *   served by the unified Etherscan V2 API (Blockscout / Routescan / native).
+ *   When omitted, `https://api.etherscan.io/v2/api?chainid=...` is used.
+ * - rpcs: public RPC endpoints, ordered by preference
+ * - isTestnet: marks test networks
+ *
+ * Notes:
+ * - ankr and drpc endpoints are excluded by project policy.
+ * - Etherscan V2 serves a fixed chain list (https://api.etherscan.io/v2/chainlist);
+ *   chains outside it need their own `apiUrl` or ABI lookups will fail.
  */
 
 // Track failed RPCs with timestamp (for temporary backoff)
 const failedRpcs = new Map() // rpc -> timestamp
 const RPC_BACKOFF_MS = 60000 // 1 minute backoff for failed RPCs
 
-/**
- * Main chain configuration object keyed by chain ID (number)
- * 
- * Each chain contains:
- * - name: Display name
- * - shortName: Short identifier (for CHAINS object keys)
- * - internalName: Internal name from Go (for compatibility)
- * - explorer: Block explorer base URL
- * - rpcs: Array of RPC URLs (excluding ankr, drpc)
- * 
- * Note: All chains use unified Etherscan V2 API (https://api.etherscan.io/v2/api)
- * Some chains use Routescan API instead (see ROUTESCAN_CHAINS in api.js)
- */
 export const chains = {
   // ============================================================================
   // Ethereum & L2s
@@ -34,19 +33,16 @@ export const chains = {
     internalName: 'ethereum',
     explorer: 'https://etherscan.io',
     rpcs: [
-      'https://eth.llamarpc.com',
       'https://ethereum-rpc.publicnode.com',
       'https://1rpc.io/eth',
       'https://rpc.mevblocker.io',
       'https://rpc.flashbots.net',
       'https://cloudflare-eth.com',
       'https://eth-mainnet.public.blastapi.io',
-      'https://ethereum.public.blockpi.network/v1/rpc/public',
-      'https://rpc.payload.de',
-      'https://eth.meowrpc.com',
       'https://eth.merkle.io',
       'https://0xrpc.io/eth',
-      'https://endpoints.omniatech.io/v1/eth/mainnet/public',
+      'https://eth.meowrpc.com',
+      'https://ethereum.public.blockpi.network/v1/rpc/public',
     ],
   },
   10: {
@@ -56,13 +52,30 @@ export const chains = {
     explorer: 'https://optimistic.etherscan.io',
     rpcs: [
       'https://mainnet.optimism.io',
-      'https://optimism.llamarpc.com',
       'https://optimism-rpc.publicnode.com',
       'https://1rpc.io/op',
-      'https://optimism.public.blastapi.io',
-      'https://optimism.blockpi.network/v1/rpc/public',
-      'https://optimism.meowrpc.com',
-      'https://0xrpc.io/op',
+      'https://optimism.gateway.tenderly.co',
+    ],
+  },
+  14: {
+    name: 'Flare',
+    shortName: 'FLR',
+    internalName: 'flare',
+    explorer: 'https://flare-explorer.flare.network',
+    apiUrl: 'https://flare-explorer.flare.network/api',
+    rpcs: [
+      'https://flare-api.flare.network/ext/C/rpc',
+    ],
+  },
+  30: {
+    name: 'Rootstock',
+    shortName: 'RBTC',
+    internalName: 'rootstock',
+    explorer: 'https://rootstock.blockscout.com',
+    apiUrl: 'https://rootstock.blockscout.com/api',
+    rpcs: [
+      'https://public-node.rsk.co',
+      'https://mycrypto.rsk.co',
     ],
   },
   56: {
@@ -71,25 +84,14 @@ export const chains = {
     internalName: 'bsc',
     explorer: 'https://bscscan.com',
     rpcs: [
-      'https://binance.llamarpc.com',
       'https://bsc-dataseed.bnbchain.org',
       'https://bsc-dataseed1.defibit.io',
       'https://bsc-dataseed1.ninicoin.io',
+      'https://bsc-dataseed2.bnbchain.org',
       'https://bsc-rpc.publicnode.com',
       'https://1rpc.io/bnb',
       'https://bsc-mainnet.public.blastapi.io',
       'https://bsc.meowrpc.com',
-      'https://bsc.blockpi.network/v1/rpc/public',
-    ],
-  },
-  66: {
-    name: 'OKXChain',
-    shortName: 'OKX',
-    internalName: 'okex',
-    explorer: 'https://www.oklink.com',
-    rpcs: [
-      'https://exchainrpc.okex.org',
-      'https://okc-mainnet.gateway.pokt.network/v1/lb/6275309bea1b320039c893ff',
     ],
   },
   100: {
@@ -101,53 +103,75 @@ export const chains = {
       'https://rpc.gnosischain.com',
       'https://gnosis-rpc.publicnode.com',
       'https://1rpc.io/gnosis',
-      'https://gnosis-mainnet.public.blastapi.io',
-      'https://gnosis.blockpi.network/v1/rpc/public',
-      'https://gnosis.meowrpc.com',
-      'https://0xrpc.io/gnosis',
     ],
   },
-  128: {
-    name: 'Heco',
-    shortName: 'HECO',
-    internalName: 'heco',
-    explorer: 'https://hecoinfo.com',
+  130: {
+    name: 'Unichain',
+    shortName: 'UNI',
+    internalName: 'unichain',
+    explorer: 'https://uniscan.xyz',
     rpcs: [
-      'https://http-mainnet.hecochain.com',
-      'https://http-mainnet-node.huobichain.com',
+      'https://mainnet.unichain.org',
+      'https://unichain-rpc.publicnode.com',
     ],
   },
   137: {
     name: 'Polygon',
-    shortName: 'MATIC',
+    shortName: 'POL',
     internalName: 'polygon',
     explorer: 'https://polygonscan.com',
     rpcs: [
-      'https://polygon-rpc.com',
-      'https://polygon.llamarpc.com',
       'https://polygon-bor-rpc.publicnode.com',
       'https://1rpc.io/matic',
-      'https://polygon-mainnet.public.blastapi.io',
-      'https://polygon.blockpi.network/v1/rpc/public',
-      'https://polygon.meowrpc.com',
-      'https://0xrpc.io/matic',
     ],
   },
   143: {
     name: 'Monad',
-    shortName: 'MONAD',
+    shortName: 'MON',
     internalName: 'monad',
-    explorer: 'https://monadexplorer.com',
-    rpcs: [],
+    explorer: 'https://monadvision.com',
+    rpcs: [
+      'https://rpc.monad.xyz',
+      'https://rpc1.monad.xyz',
+    ],
   },
   146: {
     name: 'Sonic',
-    shortName: 'SONIC',
+    shortName: 'S',
     internalName: 'sonic',
     explorer: 'https://sonicscan.org',
     rpcs: [
       'https://rpc.soniclabs.com',
-      'https://sonic.public-rpc.com',
+      'https://sonic-rpc.publicnode.com',
+    ],
+  },
+  169: {
+    name: 'Manta Pacific',
+    shortName: 'MANTA',
+    internalName: 'manta',
+    explorer: 'https://pacific-explorer.manta.network',
+    apiUrl: 'https://pacific-explorer.manta.network/api',
+    rpcs: [
+      'https://pacific-rpc.manta.network/http',
+    ],
+  },
+  204: {
+    name: 'opBNB',
+    shortName: 'opBNB',
+    internalName: 'opbnb',
+    explorer: 'https://opbnbscan.com',
+    rpcs: [
+      'https://opbnb-mainnet-rpc.bnbchain.org',
+    ],
+  },
+  232: {
+    name: 'Lens',
+    shortName: 'LENS',
+    internalName: 'lens',
+    explorer: 'https://explorer.lens.xyz',
+    apiUrl: 'https://explorer.lens.xyz/api',
+    rpcs: [
+      'https://rpc.lens.xyz',
     ],
   },
   239: {
@@ -155,20 +179,19 @@ export const chains = {
     shortName: 'TAC',
     internalName: 'tac',
     explorer: 'https://explorer.tac.build',
-    rpcs: [],
+    rpcs: [
+      'https://rpc.tac.build',
+      'https://tac.rpc.thirdweb.com',
+    ],
   },
   250: {
     name: 'Fantom',
     shortName: 'FTM',
     internalName: 'fantom',
-    explorer: 'https://ftmscan.com',
+    explorer: 'https://explorer.fantom.network',
     rpcs: [
-      'https://rpc.ftm.tools',
-      'https://fantom-rpc.publicnode.com',
-      'https://1rpc.io/ftm',
-      'https://fantom-mainnet.public.blastapi.io',
-      'https://fantom.blockpi.network/v1/rpc/public',
-      'https://0xrpc.io/ftm',
+      'https://rpcapi.fantom.network',
+      'https://rpc.fantom.network',
     ],
   },
   252: {
@@ -178,7 +201,16 @@ export const chains = {
     explorer: 'https://fraxscan.com',
     rpcs: [
       'https://rpc.frax.com',
-      'https://fraxtal.public-rpc.com',
+      'https://fraxtal-rpc.publicnode.com',
+    ],
+  },
+  291: {
+    name: 'Orderly',
+    shortName: 'ORDER',
+    internalName: 'orderly',
+    explorer: 'https://explorer.orderly.network',
+    rpcs: [
+      'https://rpc.orderly.network',
     ],
   },
   314: {
@@ -193,14 +225,23 @@ export const chains = {
   },
   324: {
     name: 'zkSync Era',
-    shortName: 'ZKSYNC',
+    shortName: 'ZK',
     internalName: 'zksync',
     explorer: 'https://explorer.zksync.io',
+    apiUrl: 'https://block-explorer-api.mainnet.zksync.io/api',
     rpcs: [
       'https://mainnet.era.zksync.io',
-      'https://zksync-era.public-rpc.com',
       'https://1rpc.io/zksync2-era',
-      'https://zksync.meowrpc.com',
+    ],
+  },
+  360: {
+    name: 'Shape',
+    shortName: 'SHAPE',
+    internalName: 'shape',
+    explorer: 'https://shapescan.xyz',
+    rpcs: [
+      'https://mainnet.shape.network',
+      'https://shape-mainnet.g.alchemy.com/public',
     ],
   },
   480: {
@@ -210,27 +251,44 @@ export const chains = {
     explorer: 'https://worldscan.org',
     rpcs: [
       'https://worldchain-mainnet.g.alchemy.com/public',
-      'https://worldchain.public-rpc.com',
+      'https://worldchain-mainnet.gateway.tenderly.co',
+    ],
+  },
+  988: {
+    name: 'Stable',
+    shortName: 'STABLE',
+    internalName: 'stable',
+    explorer: 'https://stablescan.xyz',
+    rpcs: [
+      'https://rpc.stable.xyz',
     ],
   },
   999: {
     name: 'HyperEVM',
-    shortName: 'HYPER',
+    shortName: 'HYPE',
     internalName: 'hyperevm',
     explorer: 'https://hyperevmscan.io',
-    rpcs: [],
+    rpcs: [
+      'https://rpc.hyperliquid.xyz/evm',
+    ],
   },
   1101: {
     name: 'Polygon zkEVM',
     shortName: 'ZKEVM',
     internalName: 'polygonzk',
-    explorer: 'https://zkevm.polygonscan.com',
+    explorer: 'https://polygon-zkevm.routescan.io',
     rpcs: [
       'https://zkevm-rpc.com',
-      'https://polygon-zkevm.public-rpc.com',
-      'https://1rpc.io/polygon/zkevm',
-      'https://polygon-zkevm-mainnet.public.blastapi.io',
-      'https://polygon-zkevm.blockpi.network/v1/rpc/public',
+    ],
+  },
+  1135: {
+    name: 'Lisk',
+    shortName: 'LSK',
+    internalName: 'lisk',
+    explorer: 'https://blockscout.lisk.com',
+    apiUrl: 'https://blockscout.lisk.com/api',
+    rpcs: [
+      'https://rpc.api.lisk.com',
     ],
   },
   1284: {
@@ -239,20 +297,47 @@ export const chains = {
     internalName: 'moonbeam',
     explorer: 'https://moonscan.io',
     rpcs: [
-      'https://rpc.api.moonbeam.network',
-      'https://moonbeam-rpc.publicnode.com',
       'https://1rpc.io/glmr',
-      'https://moonbeam.public.blastapi.io',
     ],
   },
   1329: {
     name: 'Sei',
     shortName: 'SEI',
     internalName: 'sei',
-    explorer: 'https://seitrace.com',
+    explorer: 'https://seiscan.io',
     rpcs: [
       'https://evm-rpc.sei-apis.com',
-      'https://sei-rpc.publicnode.com',
+      'https://sei-evm-rpc.publicnode.com',
+    ],
+  },
+  1750: {
+    name: 'Metal L2',
+    shortName: 'METAL',
+    internalName: 'metal',
+    explorer: 'https://explorer.metall2.com',
+    apiUrl: 'https://explorer.metall2.com/api',
+    rpcs: [
+      'https://rpc.metall2.com',
+    ],
+  },
+  1776: {
+    name: 'Injective',
+    shortName: 'INJ',
+    internalName: 'injective',
+    explorer: 'https://blockscout.injective.network',
+    rpcs: [
+      'https://sentry.evm-rpc.injective.network',
+    ],
+  },
+  1868: {
+    name: 'Soneium',
+    shortName: 'SONY',
+    internalName: 'soneium',
+    explorer: 'https://soneium.blockscout.com',
+    apiUrl: 'https://soneium.blockscout.com/api',
+    rpcs: [
+      'https://rpc.soneium.org',
+      'https://soneium-rpc.publicnode.com',
     ],
   },
   2031: {
@@ -274,13 +359,32 @@ export const chains = {
       'https://kava-evm-rpc.publicnode.com',
     ],
   },
+  2741: {
+    name: 'Abstract',
+    shortName: 'ABS',
+    internalName: 'abstract',
+    explorer: 'https://abscan.org',
+    rpcs: [
+      'https://api.mainnet.abs.xyz',
+    ],
+  },
   4200: {
     name: 'Merlin',
     shortName: 'MERL',
     internalName: 'merlin',
     explorer: 'https://scan.merlinchain.io',
+    apiUrl: 'https://scan.merlinchain.io/api',
     rpcs: [
       'https://rpc.merlinchain.io',
+    ],
+  },
+  4326: {
+    name: 'MegaETH',
+    shortName: 'MEGA',
+    internalName: 'megaeth',
+    explorer: 'https://megaexplorer.xyz',
+    rpcs: [
+      'https://mainnet.megaeth.com/rpc',
     ],
   },
   5000: {
@@ -291,8 +395,27 @@ export const chains = {
     rpcs: [
       'https://rpc.mantle.xyz',
       'https://mantle-rpc.publicnode.com',
-      'https://mantle-mainnet.public.blastapi.io',
-      'https://mantle.public-rpc.com',
+      'https://1rpc.io/mantle',
+    ],
+  },
+  5330: {
+    name: 'Superseed',
+    shortName: 'SUPR',
+    internalName: 'superseed',
+    explorer: 'https://explorer.superseed.xyz',
+    rpcs: [
+      'https://mainnet.superseed.xyz',
+    ],
+  },
+  7560: {
+    name: 'Cyber',
+    shortName: 'CYBER',
+    internalName: 'cyber',
+    explorer: 'https://cyberscan.co',
+    apiUrl: 'https://cyberscan.co/api',
+    rpcs: [
+      'https://cyber.alt.technology',
+      'https://rpc.cyber.co',
     ],
   },
   8453: {
@@ -302,22 +425,18 @@ export const chains = {
     explorer: 'https://basescan.org',
     rpcs: [
       'https://mainnet.base.org',
-      'https://base.llamarpc.com',
       'https://base-rpc.publicnode.com',
       'https://1rpc.io/base',
       'https://base-mainnet.public.blastapi.io',
-      'https://base.blockpi.network/v1/rpc/public',
-      'https://base.meowrpc.com',
-      'https://0xrpc.io/base',
     ],
   },
   9745: {
     name: 'Plasma',
-    shortName: 'PLASMA',
+    shortName: 'XPL',
     internalName: 'plasma',
     explorer: 'https://plasmascan.to',
     rpcs: [
-      'https://rpc.plasma.nexus',
+      'https://rpc.plasma.to',
     ],
   },
   13371: {
@@ -334,10 +453,20 @@ export const chains = {
     shortName: 'MODE',
     internalName: 'mode',
     explorer: 'https://explorer.mode.network',
+    apiUrl: 'https://explorer.mode.network/api',
     rpcs: [
       'https://mainnet.mode.network',
       'https://1rpc.io/mode',
-      'https://mode.public-rpc.com',
+    ],
+  },
+  33139: {
+    name: 'ApeChain',
+    shortName: 'APE',
+    internalName: 'apechain',
+    explorer: 'https://apescan.io',
+    rpcs: [
+      'https://rpc.apechain.com',
+      'https://apechain.calderachain.xyz/http',
     ],
   },
   42161: {
@@ -347,13 +476,8 @@ export const chains = {
     explorer: 'https://arbiscan.io',
     rpcs: [
       'https://arb1.arbitrum.io/rpc',
-      'https://arbitrum.llamarpc.com',
       'https://arbitrum-one-rpc.publicnode.com',
       'https://1rpc.io/arb',
-      'https://arbitrum-mainnet.public.blastapi.io',
-      'https://arbitrum.blockpi.network/v1/rpc/public',
-      'https://arbitrum.meowrpc.com',
-      'https://0xrpc.io/arb',
     ],
   },
   42220: {
@@ -365,7 +489,16 @@ export const chains = {
       'https://forno.celo.org',
       'https://celo-rpc.publicnode.com',
       'https://1rpc.io/celo',
-      'https://celo.public-rpc.com',
+    ],
+  },
+  43111: {
+    name: 'Hemi',
+    shortName: 'HEMI',
+    internalName: 'hemi',
+    explorer: 'https://explorer.hemi.xyz',
+    apiUrl: 'https://explorer.hemi.xyz/api',
+    rpcs: [
+      'https://rpc.hemi.network/rpc',
     ],
   },
   43114: {
@@ -377,9 +510,6 @@ export const chains = {
       'https://api.avax.network/ext/bc/C/rpc',
       'https://avalanche-c-chain-rpc.publicnode.com',
       'https://1rpc.io/avax/c',
-      'https://avalanche-mainnet.public.blastapi.io/ext/bc/C/rpc',
-      'https://avax.meowrpc.com',
-      'https://0xrpc.io/avax',
     ],
   },
   48900: {
@@ -388,8 +518,17 @@ export const chains = {
     internalName: 'zircuit',
     explorer: 'https://explorer.zircuit.com',
     rpcs: [
-      'https://zircuit1-mainnet.p2pify.com',
-      'https://zircuit-mainnet.public-rpc.com',
+      'https://mainnet.zircuit.com',
+    ],
+  },
+  57073: {
+    name: 'Ink',
+    shortName: 'INK',
+    internalName: 'ink',
+    explorer: 'https://explorer.inkonchain.com',
+    apiUrl: 'https://explorer.inkonchain.com/api',
+    rpcs: [
+      'https://rpc-gel.inkonchain.com',
     ],
   },
   59144: {
@@ -401,7 +540,33 @@ export const chains = {
       'https://rpc.linea.build',
       'https://linea-rpc.publicnode.com',
       'https://1rpc.io/linea',
-      'https://linea.blockpi.network/v1/rpc/public',
+    ],
+  },
+  60808: {
+    name: 'BOB',
+    shortName: 'BOB',
+    internalName: 'bob',
+    explorer: 'https://explorer.gobob.xyz',
+    rpcs: [
+      'https://rpc.gobob.xyz',
+    ],
+  },
+  747474: {
+    name: 'Katana',
+    shortName: 'KAT',
+    internalName: 'katana',
+    explorer: 'https://katanascan.com',
+    rpcs: [
+      'https://rpc.katana.network',
+    ],
+  },
+  7777777: {
+    name: 'Zora',
+    shortName: 'ZORA',
+    internalName: 'zora',
+    explorer: 'https://explorer.zora.energy',
+    rpcs: [
+      'https://rpc.zora.energy',
     ],
   },
   80094: {
@@ -411,42 +576,7 @@ export const chains = {
     explorer: 'https://berascan.com',
     rpcs: [
       'https://rpc.berachain.com',
-      'https://berachain-mainnet.rpc.porters.xyz',
-      'https://bera.public-rpc.com',
-    ],
-  },
-  81457: {
-    name: 'Blast',
-    shortName: 'BLAST',
-    internalName: 'blast',
-    explorer: 'https://blastscan.io',
-    rpcs: [
-      'https://rpc.blast.io',
-      'https://blast.public-rpc.com',
-      'https://blast.blockpi.network/v1/rpc/public',
-    ],
-  },
-  167000: {
-    name: 'Taiko',
-    shortName: 'TAIKO',
-    internalName: 'taiko',
-    explorer: 'https://taikoscan.io',
-    rpcs: [
-      'https://rpc.taiko.xyz',
-      'https://rpc.mainnet.taiko.xyz',
-      'https://taiko-rpc.publicnode.com',
-    ],
-  },
-  534352: {
-    name: 'Scroll',
-    shortName: 'SCROLL',
-    internalName: 'scroll',
-    explorer: 'https://scrollscan.com',
-    rpcs: [
-      'https://rpc.scroll.io',
-      'https://scroll-rpc.publicnode.com',
-      'https://1rpc.io/scroll',
-      'https://scroll-mainnet.public.blastapi.io',
+      'https://berachain-rpc.publicnode.com',
     ],
   },
   810180: {
@@ -458,28 +588,51 @@ export const chains = {
       'https://rpc.zklink.io',
     ],
   },
-
-  // ============================================================================
-  // Testnets (kept for reference but marked as testnet)
-  // ============================================================================
-  5: {
-    name: 'Goerli',
-    shortName: 'GOERLI',
-    internalName: 'goerli',
-    explorer: 'https://goerli.etherscan.io',
-    isTestnet: true,
+  81457: {
+    name: 'Blast',
+    shortName: 'BLAST',
+    internalName: 'blast',
+    explorer: 'https://blastscan.io',
     rpcs: [
-      'https://rpc.goerli.mudit.blog',
-      'https://goerli.gateway.tenderly.co',
+      'https://rpc.blast.io',
+      'https://blast-rpc.publicnode.com',
     ],
   },
+  167000: {
+    name: 'Taiko',
+    shortName: 'TAIKO',
+    internalName: 'taiko',
+    explorer: 'https://taikoscan.io',
+    rpcs: [
+      'https://rpc.mainnet.taiko.xyz',
+      'https://taiko-rpc.publicnode.com',
+    ],
+  },
+  534352: {
+    name: 'Scroll',
+    shortName: 'SCR',
+    internalName: 'scroll',
+    explorer: 'https://scrollscan.com',
+    apiUrl: 'https://api.scrollscan.com/api',
+    rpcs: [
+      'https://rpc.scroll.io',
+      'https://scroll-rpc.publicnode.com',
+      'https://1rpc.io/scroll',
+    ],
+  },
+
+  // ============================================================================
+  // Testnets
+  // ============================================================================
   10143: {
     name: 'Monad Testnet',
     shortName: 'MONAD-TEST',
     internalName: 'monadtestnet',
-    explorer: 'https://testnet.monadexplorer.com',
+    explorer: 'https://testnet.monadvision.com',
     isTestnet: true,
-    rpcs: [],
+    rpcs: [
+      'https://testnet-rpc.monad.xyz',
+    ],
   },
   421614: {
     name: 'Arbitrum Sepolia',
@@ -499,10 +652,9 @@ export const chains = {
     explorer: 'https://sepolia.etherscan.io',
     isTestnet: true,
     rpcs: [
-      'https://rpc.sepolia.org',
       'https://ethereum-sepolia-rpc.publicnode.com',
       'https://1rpc.io/sepolia',
-      'https://sepolia.public-rpc.com',
+      'https://sepolia.gateway.tenderly.co',
     ],
   },
 }
@@ -564,8 +716,7 @@ export function getChainName(chainId) {
 }
 
 /**
- * Check if chain has Etherscan API support
- * All chains now use Etherscan V2 API, so this returns true for all valid chains
+ * Check if chain has an explorer API for ABI/source lookups.
  * @param {string|number} chainId 
  * @returns {boolean}
  */
@@ -574,20 +725,18 @@ export function hasEtherscanApi(chainId) {
 }
 
 /**
- * Get explorer URL (unified Etherscan V2 API)
+ * Get the block-explorer API base URL for a chain.
+ *
+ * Prefers the chain's explicit `apiUrl` (Blockscout / native Etherscan-compatible
+ * APIs), otherwise the unified Etherscan V2 API.
+ *
  * @param {string|number} chainId - Chain ID
  * @returns {string|null} API URL or null if chain not found
  */
 export function getExplorerApiUrl(chainId) {
-  if (!getChain(chainId)) return null
-  
-  const normalizedChainId = String(chainId)
-  // Known Routescan chains: 9745
-  const routescanChains = new Set(['9745'])
-  if (routescanChains.has(normalizedChainId)) {
-    return `https://api.routescan.io/v2/network/mainnet/evm/${normalizedChainId}/etherscan/api`
-  }
-  return 'https://api.etherscan.io/v2/api'
+  const chain = getChain(chainId)
+  if (!chain) return null
+  return chain.apiUrl || 'https://api.etherscan.io/v2/api'
 }
 
 /**

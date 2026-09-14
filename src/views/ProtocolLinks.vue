@@ -79,28 +79,28 @@ const protocols = [
         chains: ["Ethereum", "Polygon", "Arbitrum", "Optimism", "Base"],
     },
     {
-        name: "SushiSwap",
+        name: "Sushi",
         url: "https://www.sushi.com",
         category: "DEX",
         icon: "🍣",
         description: "Multi-chain DEX with yield farming and lending",
-        chains: ["Ethereum", "Polygon", "Arbitrum", "Fantom"],
+        chains: ["Ethereum", "Polygon", "Arbitrum", "Base"],
     },
     {
         name: "Curve",
-        url: "https://curve.fi",
+        url: "https://www.curve.finance",
         category: "DEX",
         icon: "🌀",
         description: "Stablecoin and wrapped asset exchange",
-        chains: ["Ethereum", "Polygon", "Arbitrum", "Fantom"],
+        chains: ["Ethereum", "Polygon", "Arbitrum", "Base"],
     },
     {
         name: "Balancer",
-        url: "https://app.balancer.fi",
+        url: "https://balancer.fi",
         category: "DEX",
         icon: "⚖️",
         description: "Programmable liquidity pools",
-        chains: ["Ethereum", "Polygon", "Arbitrum"],
+        chains: ["Ethereum", "Polygon", "Arbitrum", "Base"],
     },
     {
         name: "PancakeSwap",
@@ -112,11 +112,11 @@ const protocols = [
     },
     {
         name: "1inch",
-        url: "https://app.1inch.io",
+        url: "https://1inch.com",
         category: "DEX",
         icon: "🦄",
         description: "DEX aggregator for best swap rates",
-        chains: ["Ethereum", "Polygon", "BSC", "Arbitrum", "Optimism"],
+        chains: ["Ethereum", "Polygon", "BSC", "Arbitrum", "Optimism", "Base"],
     },
 
     // Lending
@@ -137,31 +137,24 @@ const protocols = [
         chains: ["Ethereum", "Polygon"],
     },
     {
-        name: "MakerDAO",
-        url: "https://oasis.app",
-        category: "Lending",
-        icon: "🏛️",
-        description: "DAI stablecoin and collateralized debt positions",
-        chains: ["Ethereum"],
-    },
-    {
         name: "Morpho",
-        url: "https://app.morpho.xyz",
+        url: "https://app.morpho.org",
         category: "Lending",
         icon: "🦋",
         description: "Optimized lending rates through P2P matching",
-        chains: ["Ethereum"],
+        chains: ["Ethereum", "Base", "Arbitrum"],
+    },
+    {
+        name: "Sky",
+        url: "https://app.sky.money",
+        category: "Lending",
+        icon: "🌌",
+        description: "Stablecoin credit protocol (formerly MakerDAO)",
+        chains: ["Ethereum", "Base", "Arbitrum"],
     },
 
     // Yield
-    {
-        name: "Yearn",
-        url: "https://yearn.fi",
-        category: "Yield",
-        icon: "💎",
-        description: "Yield optimization vaults",
-        chains: ["Ethereum", "Fantom", "Arbitrum"],
-    },
+    { name: "Yearn", url: "https://yearn.fi", category: "Yield", icon: "💎", description: "Yield optimization vaults", chains: ["Ethereum", "Optimism", "Arbitrum", "Base"] },
     { name: "Convex", url: "https://www.convexfinance.com", category: "Yield", icon: "⚡", description: "Boosted Curve rewards", chains: ["Ethereum"] },
     {
         name: "Beefy",
@@ -182,12 +175,12 @@ const protocols = [
         chains: ["Ethereum", "Polygon", "BSC", "Arbitrum", "Optimism", "Avalanche"],
     },
     {
-        name: "Hop Protocol",
-        url: "https://app.hop.exchange",
+        name: "Relay",
+        url: "https://relay.link",
         category: "Bridge",
-        icon: "🐇",
-        description: "Fast cross-chain token transfers",
-        chains: ["Ethereum", "Polygon", "Arbitrum", "Optimism"],
+        icon: "⚡",
+        description: "Fast, low-cost cross-chain transfers",
+        chains: ["Ethereum", "Base", "Arbitrum", "Optimism"],
     },
     {
         name: "Across",
@@ -195,7 +188,7 @@ const protocols = [
         category: "Bridge",
         icon: "🌊",
         description: "Capital efficient cross-chain bridge",
-        chains: ["Ethereum", "Polygon", "Arbitrum", "Optimism"],
+        chains: ["Ethereum", "Polygon", "Arbitrum", "Optimism", "Base"],
     },
 
     // Derivatives
@@ -209,11 +202,11 @@ const protocols = [
     },
     {
         name: "dYdX",
-        url: "https://dydx.exchange",
+        url: "https://www.dydx.xyz",
         category: "Derivatives",
         icon: "📊",
-        description: "Layer 2 perpetuals trading",
-        chains: ["Ethereum", "dYdX Chain"],
+        description: "Decentralized perpetuals exchange",
+        chains: ["dYdX Chain"],
     },
     {
         name: "Synthetix",
@@ -267,6 +260,143 @@ const protocols = [
         description: "On-chain governance platform",
         chains: ["Ethereum", "Polygon", "Arbitrum"],
     },
+
+    // ---------------------------------------------------------------------
+    // DEX / aggregators
+    // ---------------------------------------------------------------------
+    { name: "CoW Swap", url: "https://swap.cow.fi", category: "DEX", icon: "🐮", description: "MEV-protected batch auction DEX", chains: ["Ethereum", "Gnosis", "Arbitrum", "Base"] },
+    { name: "KyberSwap", url: "https://kyberswap.com", category: "DEX", icon: "🟢", description: "Multi-chain DEX and aggregator", chains: ["Ethereum", "Polygon", "BSC", "Arbitrum", "Base"] },
+    { name: "Aerodrome", url: "https://aerodrome.finance", category: "DEX", icon: "✈️", description: "Base's central liquidity hub (veAERO)", chains: ["Base"] },
+    { name: "Velodrome", url: "https://velodrome.finance", category: "DEX", icon: "🚴", description: "Optimism's central liquidity hub (veVELO)", chains: ["Optimism"] },
+    { name: "Pendle", url: "https://app.pendle.finance", category: "DEX", icon: "⏳", description: "Yield tokenization and trading", chains: ["Ethereum", "Arbitrum", "Base"] },
+    { name: "Fluid", url: "https://fluid.io", category: "DEX", icon: "💧", description: "Unified liquidity layer (formerly Instadapp)", chains: ["Ethereum", "Arbitrum", "Base"] },
+    { name: "Maverick", url: "https://www.mav.xyz", category: "DEX", icon: "🐴", description: "Dynamic distribution AMM", chains: ["Ethereum", "BSC", "Base"] },
+    { name: "Odos", url: "https://app.odos.xyz", category: "DEX", icon: "🧭", description: "Multi-token swap aggregator", chains: ["Ethereum", "Polygon", "Arbitrum", "Base"] },
+    { name: "Ambient", url: "https://ambient.finance", category: "DEX", icon: "🌊", description: "Concentrated liquidity DEX on Scroll", chains: ["Scroll", "Ethereum"] },
+    { name: "LFJ", url: "https://lfj.gg", category: "DEX", icon: "☕", description: "Liquidity marketplace (formerly Trader Joe)", chains: ["Avalanche", "Arbitrum", "Base"] },
+
+    // ---------------------------------------------------------------------
+    // Lending
+    // ---------------------------------------------------------------------
+    { name: "Spark", url: "https://app.spark.fi", category: "Lending", icon: "✨", description: "Sky's lending and savings protocol", chains: ["Ethereum", "Gnosis", "Base"] },
+    { name: "Euler", url: "https://app.euler.finance", category: "Lending", icon: "🔺", description: "Permissionless lending vaults", chains: ["Ethereum", "Base"] },
+    { name: "Silo", url: "https://app.silo.finance", category: "Lending", icon: "🌾", description: "Isolated lending markets", chains: ["Ethereum", "Arbitrum", "Sonic"] },
+    { name: "Venus", url: "https://app.venus.io", category: "Lending", icon: "♀️", description: "BNB Chain money market", chains: ["BSC", "Ethereum", "Optimism"] },
+    { name: "Dolomite", url: "https://app.dolomite.io", category: "Lending", icon: "🪨", description: "Margin trading and lending", chains: ["Ethereum", "Arbitrum", "Base"] },
+    { name: "Ajna", url: "https://ajna.finance", category: "Lending", icon: "🎯", description: "Oracle-free permissionless lending", chains: ["Ethereum", "Base", "Arbitrum"] },
+
+    // ---------------------------------------------------------------------
+    // Liquid staking & restaking
+    // ---------------------------------------------------------------------
+    { name: "Lido", url: "https://stake.lido.fi", category: "Liquid Staking", icon: "🌊", description: "Liquid staking for ETH (stETH)", chains: ["Ethereum", "Arbitrum", "Base"] },
+    { name: "Rocket Pool", url: "https://stake.rocketpool.net", category: "Liquid Staking", icon: "🚀", description: "Decentralized ETH staking (rETH)", chains: ["Ethereum", "Optimism", "Arbitrum"] },
+    { name: "StakeWise", url: "https://app.stakewise.io", category: "Liquid Staking", icon: "🧠", description: "Vault-based ETH staking (osETH)", chains: ["Ethereum"] },
+    { name: "EigenLayer", url: "https://www.eigenlayer.xyz", category: "Restaking", icon: "🔄", description: "Ethereum restaking and AVS security", chains: ["Ethereum"] },
+    { name: "ether.fi", url: "https://app.ether.fi", category: "Restaking", icon: "💎", description: "Non-custodial ETH restaking (eETH)", chains: ["Ethereum", "Base", "Arbitrum"] },
+    { name: "Renzo", url: "https://app.renzoprotocol.com", category: "Restaking", icon: "🛡️", description: "EigenLayer restaking (ezETH)", chains: ["Ethereum", "Arbitrum", "Base"] },
+    { name: "Kelp DAO", url: "https://kelpdao.xyz", category: "Restaking", icon: "🌿", description: "Liquid restaking (rsETH)", chains: ["Ethereum", "Arbitrum", "Base"] },
+    { name: "Puffer", url: "https://app.puffer.fi", category: "Restaking", icon: "🐡", description: "Based rollup + liquid restaking", chains: ["Ethereum"] },
+    { name: "Symbiotic", url: "https://app.symbiotic.fi", category: "Restaking", icon: "🤝", description: "Permissionless shared security", chains: ["Ethereum"] },
+    { name: "Karak", url: "https://app.karak.network", category: "Restaking", icon: "⚔️", description: "Universal restaking layer", chains: ["Ethereum", "Arbitrum"] },
+
+    // ---------------------------------------------------------------------
+    // Yield
+    // ---------------------------------------------------------------------
+    { name: "Gearbox", url: "https://app.gearbox.fi", category: "Yield", icon: "⚙️", description: "Composable leverage and credit accounts", chains: ["Ethereum", "Arbitrum"] },
+    { name: "Harvest", url: "https://app.harvest.finance", category: "Yield", icon: "🌾", description: "Automated yield farming", chains: ["Ethereum", "Base", "Arbitrum"] },
+
+    // ---------------------------------------------------------------------
+    // Stablecoins
+    // ---------------------------------------------------------------------
+    { name: "Ethena", url: "https://app.ethena.fi", category: "Stablecoin", icon: "🧿", description: "Delta-neutral synthetic dollar (USDe)", chains: ["Ethereum", "Arbitrum", "Base"] },
+    { name: "Liquity", url: "https://www.liquity.org", category: "Stablecoin", icon: "🏛️", description: "Interest-free CDP borrowing (LUSD/BOLD)", chains: ["Ethereum"] },
+    { name: "Frax", url: "https://app.frax.finance", category: "Stablecoin", icon: "🧬", description: "FRAX stablecoin and frxETH", chains: ["Ethereum", "Fraxtal", "Arbitrum"] },
+    { name: "Reserve", url: "https://app.reserve.org", category: "Stablecoin", icon: "💵", description: "Asset-backed stablecoin (RSR)", chains: ["Ethereum", "Base", "Arbitrum"] },
+    { name: "Usual", url: "https://app.usual.money", category: "Stablecoin", icon: "🪙", description: "RWA-backed stablecoin (USD0)", chains: ["Ethereum"] },
+
+    // ---------------------------------------------------------------------
+    // Bridges
+    // ---------------------------------------------------------------------
+    { name: "LayerZero", url: "https://layerzero.network", category: "Bridge", icon: "🛰️", description: "Omnichain interoperability protocol", chains: ["Multi-chain"] },
+    { name: "Wormhole", url: "https://wormhole.com", category: "Bridge", icon: "🕳️", description: "Cross-chain messaging protocol", chains: ["Multi-chain"] },
+    { name: "deBridge", url: "https://app.debridge.finance", category: "Bridge", icon: "🌁", description: "Intent-based cross-chain swaps", chains: ["Multi-chain"] },
+    { name: "Bungee", url: "https://bungee.exchange", category: "Bridge", icon: "🪢", description: "Bridge and swap aggregator", chains: ["Multi-chain"] },
+    { name: "Orbiter", url: "https://orbiter.finance", category: "Bridge", icon: "🛸", description: "Rollup-to-rollup bridging", chains: ["Ethereum", "Arbitrum", "Optimism", "Base"] },
+    { name: "Squid", url: "https://app.squidrouter.com", category: "Bridge", icon: "🦑", description: "Cross-chain swaps by Axelar", chains: ["Multi-chain"] },
+    { name: "Jumper", url: "https://jumper.exchange", category: "Bridge", icon: "🏃", description: "LI.FI powered swap and bridge", chains: ["Multi-chain"] },
+
+    // ---------------------------------------------------------------------
+    // Derivatives
+    // ---------------------------------------------------------------------
+    { name: "Hyperliquid", url: "https://app.hyperliquid.xyz", category: "Derivatives", icon: "🔵", description: "On-chain perps and HyperEVM", chains: ["HyperEVM"] },
+    { name: "Aevo", url: "https://app.aevo.xyz", category: "Derivatives", icon: "📉", description: "Options and perpetuals exchange", chains: ["Ethereum", "Optimism"] },
+    { name: "Ostium", url: "https://ostium.io", category: "Derivatives", icon: "🎢", description: "On-chain macro and commodity perps", chains: ["Arbitrum", "Base"] },
+    { name: "Gains Network", url: "https://gains.trade", category: "Derivatives", icon: "🎣", description: "Leveraged trading across assets", chains: ["Arbitrum", "Base"] },
+
+    // ---------------------------------------------------------------------
+    // Prediction markets
+    // ---------------------------------------------------------------------
+    { name: "Polymarket", url: "https://polymarket.com", category: "Prediction", icon: "🔮", description: "Largest prediction market", chains: ["Polygon"] },
+    { name: "Azuro", url: "https://azuro.org", category: "Prediction", icon: "🎲", description: "On-chain sports betting liquidity", chains: ["Gnosis", "Polygon", "Base"] },
+    { name: "Limitless", url: "https://limitless.exchange", category: "Prediction", icon: "🧮", description: "Short-term prediction markets", chains: ["Base"] },
+
+    // ---------------------------------------------------------------------
+    // NFT
+    // ---------------------------------------------------------------------
+    { name: "Magic Eden", url: "https://magiceden.io", category: "NFT", icon: "🪄", description: "Multi-chain NFT marketplace", chains: ["Ethereum", "Polygon", "Base"] },
+    { name: "Zora", url: "https://zora.co", category: "NFT", icon: "🎨", description: "Onchain creation and minting", chains: ["Zora", "Base", "Ethereum"] },
+
+    // ---------------------------------------------------------------------
+    // Governance
+    // ---------------------------------------------------------------------
+    { name: "Boardroom", url: "https://boardroom.io", category: "Governance", icon: "🏢", description: "Governance data and voting", chains: ["Multi-chain"] },
+    { name: "Karma", url: "https://www.karmahq.xyz", category: "Governance", icon: "🧘", description: "Delegate discovery and accountability", chains: ["Multi-chain"] },
+
+    // ---------------------------------------------------------------------
+    // Analytics & data
+    // ---------------------------------------------------------------------
+    { name: "DefiLlama", url: "https://defillama.com", category: "Analytics", icon: "🦙", description: "DeFi TVL and protocol data", chains: ["Multi-chain"] },
+    { name: "Dune", url: "https://dune.com", category: "Analytics", icon: "📊", description: "Community SQL analytics", chains: ["Multi-chain"] },
+    { name: "Token Terminal", url: "https://tokenterminal.com", category: "Analytics", icon: "📈", description: "Fundamentals for crypto protocols", chains: ["Multi-chain"] },
+    { name: "L2BEAT", url: "https://l2beat.com", category: "Analytics", icon: "🔍", description: "L2 scaling risk analysis", chains: ["Multi-chain"] },
+    { name: "growthepie", url: "https://growthepie.xyz", category: "Analytics", icon: "🥧", description: "Ethereum ecosystem analytics", chains: ["Multi-chain"] },
+    { name: "Artemis", url: "https://app.artemis.xyz", category: "Analytics", icon: "🏹", description: "Cross-chain fundamentals data", chains: ["Multi-chain"] },
+    { name: "Nansen", url: "https://www.nansen.ai", category: "Analytics", icon: "🔬", description: "On-chain wallet labelling", chains: ["Multi-chain"] },
+    { name: "Arkham", url: "https://arkm.com", category: "Analytics", icon: "🕵️", description: "Entity intelligence and tracking", chains: ["Multi-chain"] },
+    { name: "Zerion", url: "https://app.zerion.io", category: "Analytics", icon: "🧭", description: "Portfolio tracker and wallet", chains: ["Multi-chain"] },
+
+    // ---------------------------------------------------------------------
+    // Developer tools
+    // ---------------------------------------------------------------------
+    { name: "Tenderly", url: "https://dashboard.tenderly.co", category: "Dev Tools", icon: "🔮", description: "Simulation, debugging and Virtual Environments", chains: ["Multi-chain"] },
+    { name: "Foundry", url: "https://www.getfoundry.sh", category: "Dev Tools", icon: "🔨", description: "Fast Solidity testing framework", chains: ["Multi-chain"] },
+    { name: "Hardhat", url: "https://hardhat.org", category: "Dev Tools", icon: "⛑️", description: "Ethereum development environment", chains: ["Multi-chain"] },
+    { name: "Remix", url: "https://remix.ethereum.org", category: "Dev Tools", icon: "✏️", description: "Browser Solidity IDE", chains: ["Multi-chain"] },
+    { name: "OpenZeppelin", url: "https://www.openzeppelin.com", category: "Dev Tools", icon: "🛡️", description: "Audited contract libraries and upgrades", chains: ["Multi-chain"] },
+    { name: "Safe", url: "https://app.safe.global", category: "Dev Tools", icon: "🔐", description: "Multisig smart account platform", chains: ["Multi-chain"] },
+    { name: "Sourcify", url: "https://sourcify.dev", category: "Dev Tools", icon: "✅", description: "Decentralized contract verification", chains: ["Multi-chain"] },
+    { name: "OpenChain", url: "https://openchain.xyz", category: "Dev Tools", icon: "🔗", description: "Signature and selector database (now Sourcify 4byte)", chains: ["Multi-chain"] },
+    { name: "4byte Directory", url: "https://www.4byte.directory", category: "Dev Tools", icon: "🔢", description: "Function selector registry", chains: ["Multi-chain"] },
+    { name: "Blockscout", url: "https://www.blockscout.com", category: "Dev Tools", icon: "🧱", description: "Open-source block explorer", chains: ["Multi-chain"] },
+    { name: "Routescan", url: "https://routescan.io", category: "Dev Tools", icon: "🛣️", description: "Multi-chain explorer and API", chains: ["Multi-chain"] },
+    { name: "viem", url: "https://viem.sh", category: "Dev Tools", icon: "🧩", description: "TypeScript Ethereum interface", chains: ["Multi-chain"] },
+    { name: "wagmi", url: "https://wagmi.sh", category: "Dev Tools", icon: "⚛️", description: "React hooks for Ethereum", chains: ["Multi-chain"] },
+    { name: "ethers.js", url: "https://docs.ethers.org", category: "Dev Tools", icon: "📘", description: "Ethereum JavaScript library", chains: ["Multi-chain"] },
+    { name: "Alchemy", url: "https://www.alchemy.com", category: "Dev Tools", icon: "🧪", description: "Node infrastructure and APIs", chains: ["Multi-chain"] },
+    { name: "QuickNode", url: "https://www.quicknode.com", category: "Dev Tools", icon: "⚡", description: "Blockchain infrastructure provider", chains: ["Multi-chain"] },
+
+    // ---------------------------------------------------------------------
+    // Security
+    // ---------------------------------------------------------------------
+    { name: "GoPlus", url: "https://gopluslabs.io", category: "Security", icon: "🛡️", description: "Token and contract risk detection", chains: ["Multi-chain"] },
+    { name: "De.Fi Scanner", url: "https://de.fi/scanner", category: "Security", icon: "🔎", description: "Contract and wallet risk scanner", chains: ["Multi-chain"] },
+    { name: "Honeypot.is", url: "https://honeypot.is", category: "Security", icon: "🍯", description: "Honeypot and tax simulation", chains: ["Ethereum", "BSC", "Base"] },
+    { name: "MetaSleuth", url: "https://metasleuth.io", category: "Security", icon: "🕵️", description: "Fund-flow visual investigation", chains: ["Multi-chain"] },
+    { name: "BlockSec Phalcon", url: "https://phalcon.blocksec.com", category: "Security", icon: "🦅", description: "Transaction explorer and attack detection", chains: ["Multi-chain"] },
+    { name: "Solodit", url: "https://solodit.cyfrin.io", category: "Security", icon: "📚", description: "Aggregated audit findings database", chains: ["Multi-chain"] },
+    { name: "Cyfrin", url: "https://www.cyfrin.io", category: "Security", icon: "🔐", description: "Smart contract audits and education", chains: ["Multi-chain"] },
+    { name: "Slither", url: "https://github.com/crytic/slither", category: "Security", icon: "🐍", description: "Static analysis for Solidity", chains: ["Multi-chain"] },
+    { name: "Echidna", url: "https://github.com/crytic/echidna", category: "Security", icon: "🦔", description: "Property-based fuzzer for EVM", chains: ["Multi-chain"] },
 ];
 
 const categories = computed(() => {

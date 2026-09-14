@@ -6,7 +6,8 @@
  */
 
 import { lookupCommonSignature } from '@/config/signatures.js'
-import { getEthers, createInterface } from './core/ethers.js'
+import { createInterface } from './core/ethers.js'
+import { signatureStore } from './storageManager.js'
 
 // ============================================================================
 // STORAGE
@@ -22,6 +23,33 @@ const customSignatures = new Map()
  * API query result cache (selector → signatures array)
  */
 const signatureCache = new Map()
+
+/**
+ * Read a lookup result from the persistent signature cache.
+ * Keeping this in the typed store makes the result survive reloads and shows up
+ * in the Cache Manager's Signatures tab.
+ */
+function readPersistedSignatures(selector) {
+  try {
+    const entry = signatureStore.get(selector)
+    const signatures = entry?.signatures
+    return Array.isArray(signatures) && signatures.length > 0 ? signatures : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Persist a lookup result (best effort).
+ */
+function persistSignatures(selector, signatures) {
+  if (!Array.isArray(signatures) || signatures.length === 0) return
+  try {
+    signatureStore.set(selector, { signatures })
+  } catch {
+    // Persistence is optional; ignore quota/security errors.
+  }
+}
 
 // ============================================================================
 // API ENDPOINTS
@@ -89,9 +117,14 @@ export async function lookupSignature(sighashOrPayload) {
     return [common]
   }
   
-  // 3. Check signatureCache (API cache)
+  // 3. Check signatureCache (in-memory), then the persistent cache
   if (signatureCache.has(sighash)) {
     return signatureCache.get(sighash)
+  }
+  const persisted = readPersistedSignatures(sighash)
+  if (persisted) {
+    signatureCache.set(sighash, persisted)
+    return persisted
   }
   
   // 4. Query 4byte API
@@ -111,8 +144,9 @@ export async function lookupSignature(sighashOrPayload) {
     const results = data?.result?.function?.[sighash] || []
     const signatures = results.map(r => r.name).filter(Boolean)
     
-    // Cache the result
+    // Cache the result (memory + persistent store)
     signatureCache.set(sighash, signatures)
+    persistSignatures(sighash, signatures)
     
     return signatures
   } catch (e) {
@@ -207,10 +241,15 @@ export async function submitSignatures(signatures) {
 }
 
 /**
- * Clear signature cache
+ * Clear signature cache (in-memory and persisted)
  */
 export function clearCache() {
   signatureCache.clear()
+  try {
+    signatureStore.clear()
+  } catch {
+    // ignore
+  }
 }
 
 /**

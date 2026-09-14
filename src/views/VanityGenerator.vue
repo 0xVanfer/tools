@@ -87,6 +87,7 @@ const results = ref([]);
 let workers = [];
 let foundCount = 0;
 let timeoutId = null;
+let workerUrl = null;
 
 const HEX_REGEX = /^[0-9a-fA-F]*$/;
 
@@ -139,13 +140,22 @@ self.onmessage = function(e) {
         }
         
         count++;
-        if (count >= 10000) {
+        if (count >= 1000) {
             self.postMessage({ type: 'progress', count: count });
             count = 0;
         }
     }
 };
 `;
+
+// Clamp the numeric form inputs: clearing them produced `''`, which made
+// `'' * 60000 === 0` (instant spurious timeout) and `foundCount >= ''` true
+// after a single hit.
+const clampInt = (value, min, max, fallback) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(max, Math.max(min, Math.floor(n)));
+};
 
 const startGeneration = () => {
     // Validation
@@ -154,6 +164,11 @@ const startGeneration = () => {
         return;
     }
 
+    const targetCount = clampInt(quantity.value, 1, 1000, 1);
+    const timeoutMinutes = clampInt(timeoutMins.value, 1, 60, 10);
+    quantity.value = targetCount;
+    timeoutMins.value = timeoutMinutes;
+
     isRunning.value = true;
     scannedCount.value = 0;
     foundCount = 0;
@@ -161,11 +176,20 @@ const startGeneration = () => {
     // Start Workers
     const threadCount = navigator.hardwareConcurrency || 4;
     const blob = new Blob([workerCode], { type: "application/javascript" });
-    const workerUrl = URL.createObjectURL(blob);
+    workerUrl = URL.createObjectURL(blob);
 
     for (let i = 0; i < threadCount; i++) {
         const worker = new Worker(workerUrl);
         worker.onmessage = handleWorkerMessage;
+        // Without an error handler a blocked CDN import kills the worker silently
+        // and the UI stays stuck on "Stop".
+        worker.onerror = (err) => {
+            console.error("[VanityGenerator] worker error", err);
+            if (isRunning.value) {
+                alert("A generation worker failed. ethers.js may be blocked or offline.");
+                stopGeneration();
+            }
+        };
         worker.postMessage({ prefix: prefix.value, suffix: suffix.value });
         workers.push(worker);
     }
@@ -179,7 +203,7 @@ const startGeneration = () => {
                 stopGeneration();
             }
         },
-        timeoutMins.value * 60 * 1000,
+        timeoutMinutes * 60 * 1000,
     );
 };
 
@@ -209,6 +233,10 @@ const stopGeneration = () => {
     isRunning.value = false;
     workers.forEach((w) => w.terminate());
     workers = [];
+    if (workerUrl) {
+        URL.revokeObjectURL(workerUrl);
+        workerUrl = null;
+    }
 };
 
 const clearResults = () => {

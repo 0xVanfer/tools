@@ -18,9 +18,12 @@ export async function copyToClipboard(text) {
       textarea.style.opacity = '0'
       document.body.appendChild(textarea)
       textarea.select()
-      document.execCommand('copy')
+      // execCommand reports success via its boolean return value; ignoring it
+      // made a failed copy look successful to every caller.
+      const ok = document.execCommand('copy')
       document.body.removeChild(textarea)
-      return true
+      if (!ok) console.error('Failed to copy:', err)
+      return ok
     } catch {
       console.error('Failed to copy:', err)
       return false

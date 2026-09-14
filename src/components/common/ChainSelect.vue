@@ -29,7 +29,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onUnmounted } from "vue";
 import { CHAINS } from "@/utils/chains";
 
 const props = defineProps({
@@ -154,6 +154,15 @@ watch(
     },
     { immediate: true },
 );
+
+// Clean up listeners/timers when navigating away with the dropdown still open —
+// previously the scroll/resize listeners leaked permanently.
+onUnmounted(() => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    if (blurTimer) clearTimeout(blurTimer);
+    window.removeEventListener("scroll", updateDropdownPosition, true);
+    window.removeEventListener("resize", updateDropdownPosition);
+});
 </script>
 
 <style scoped>

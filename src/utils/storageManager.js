@@ -36,7 +36,17 @@ export const CacheTypes = {
   SIGNATURE: 'signature',
   SETTINGS: 'settings',
   HISTORY: 'history',
-  VNET: 'vnet',
+}
+
+/**
+ * Parameter names (in order) used to build each cache key. The last entry is the
+ * "key" parameter, i.e. the one a bare string argument maps to.
+ */
+const CACHE_KEY_PARAMS = {
+  [CacheTypes.CONTRACT]: ['chainId', 'address'],
+  [CacheTypes.SIGNATURE]: ['selector'],
+  [CacheTypes.SETTINGS]: ['setting'],
+  [CacheTypes.HISTORY]: ['key'],
 }
 
 /**
@@ -61,11 +71,8 @@ export const CacheTypeMeta = {
     description: 'Function and event signatures',
     icon: '✍️',
     prefix: STORAGE_PREFIX,
-    keyPattern: (key) => {
-      // Pattern: signature:{selector}
-      const parts = key.split(':')
-      return parts.length === 2 ? { selector: parts[1] } : null
-    },
+    // keyPart is already the selector (the "signature:" prefix has been stripped)
+    keyPattern: (key) => ({ selector: key }),
     formatKey: (params) => params.selector,
   },
   [CacheTypes.SETTINGS]: {
@@ -73,7 +80,7 @@ export const CacheTypeMeta = {
     description: 'Application settings and preferences',
     icon: '⚙️',
     prefix: STORAGE_PREFIX,
-    keyPattern: (key) => ({ setting: key.split(':')[1] }),
+    keyPattern: (key) => ({ setting: key }),
     formatKey: (params) => params.setting,
   },
   [CacheTypes.HISTORY]: {
@@ -81,19 +88,10 @@ export const CacheTypeMeta = {
     description: 'Search and input history',
     icon: '📜',
     prefix: STORAGE_PREFIX,
-    keyPattern: (key) => ({ type: key.split(':')[1] }),
-    formatKey: (params) => params.type,
-  },
-  [CacheTypes.VNET]: {
-    label: 'VNet',
-    description: 'Virtual network reader cache',
-    icon: '🌐',
-    prefix: STORAGE_PREFIX,
-    keyPattern: (key) => {
-      const parts = key.split(':')
-      return parts.length >= 2 ? { id: parts.slice(1).join(':') } : null
-    },
-    formatKey: (params) => params.id,
+    // NOTE: must not return a `type` property — parseKey merges this over the
+    // real type and used to clobber it with `undefined`.
+    keyPattern: (key) => ({ key }),
+    formatKey: (params) => params.key,
   },
 }
 
@@ -149,10 +147,43 @@ function parseKey(fullKey) {
   
   const parsed = meta.keyPattern(keyPart)
   return {
+    // `parsed` first so a keyPattern can never clobber the real type.
+    ...(parsed || {}),
     type,
     fullKey,
-    ...parsed,
   }
+}
+
+/**
+ * Resolve call arguments into a full key-parameter object.
+ *
+ * A bare string argument maps to the type's last key parameter (e.g. `address`
+ * for contracts, `selector` for signatures). All remaining parameters must come
+ * from the store's defaults, otherwise the key would be built with `undefined`.
+ */
+function resolveKeyParams(type, defaultParams, keyParams) {
+  const names = CACHE_KEY_PARAMS[type]
+  if (!names) {
+    throw new Error(`Unknown cache type: ${type}`)
+  }
+
+  if (typeof keyParams !== 'string') {
+    return { ...defaultParams, ...keyParams }
+  }
+
+  const name = names[names.length - 1]
+  const params = { ...defaultParams, [name]: keyParams }
+
+  for (const paramName of names) {
+    if (params[paramName] === undefined || params[paramName] === null) {
+      throw new Error(
+        `Cache type "${type}" needs "${paramName}" when a string key is used; ` +
+        `pass an object or provide it in the store defaults`
+      )
+    }
+  }
+
+  return params
 }
 
 /**
@@ -169,9 +200,7 @@ export function createStore(type, defaultParams = {}) {
      * Get item from storage
      */
     get(keyParams) {
-      const params = typeof keyParams === 'string' 
-        ? { ...defaultParams, [Object.keys(meta.keyPattern(''))[0]]: keyParams }
-        : { ...defaultParams, ...keyParams }
+      const params = resolveKeyParams(type, defaultParams, keyParams)
       const key = buildKey(type, params)
       try {
         const data = localStorage.getItem(key)
@@ -185,9 +214,7 @@ export function createStore(type, defaultParams = {}) {
      * Set item in storage (merges with existing)
      */
     set(keyParams, data, options = { merge: true }) {
-      const params = typeof keyParams === 'string' 
-        ? { ...defaultParams, [Object.keys(meta.keyPattern(''))[0]]: keyParams }
-        : { ...defaultParams, ...keyParams }
+      const params = resolveKeyParams(type, defaultParams, keyParams)
       const key = buildKey(type, params)
       try {
         let finalData = data
@@ -209,9 +236,7 @@ export function createStore(type, defaultParams = {}) {
      * Remove item from storage
      */
     remove(keyParams) {
-      const params = typeof keyParams === 'string' 
-        ? { ...defaultParams, [Object.keys(meta.keyPattern(''))[0]]: keyParams }
-        : { ...defaultParams, ...keyParams }
+      const params = resolveKeyParams(type, defaultParams, keyParams)
       const key = buildKey(type, params)
       try {
         localStorage.removeItem(key)
@@ -444,4 +469,3 @@ export const contractStore = createStore(CacheTypes.CONTRACT)
 export const signatureStore = createStore(CacheTypes.SIGNATURE)
 export const settingsStore = createStore(CacheTypes.SETTINGS)
 export const historyStore = createStore(CacheTypes.HISTORY)
-export const vnetStore = createStore(CacheTypes.VNET)

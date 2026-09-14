@@ -41,9 +41,12 @@ const PROXY_CONTRACT_NAMES = [
  */
 function isProxyContractName(name) {
   if (!name) return false
-  return PROXY_CONTRACT_NAMES.some(proxyName => 
-    name === proxyName || name.endsWith(proxyName)
-  )
+  const n = name.trim()
+  if (PROXY_CONTRACT_NAMES.includes(n)) return true
+  // Convention: proxy implementations are named "...Proxy" (e.g.
+  // TransparentUpgradeableProxy, OssifiableProxy). Require a lowercase/digit
+  // boundary before the suffix so names like "NotAProxy" are not misclassified.
+  return /(?:^|[a-z0-9])Proxy$/.test(n)
 }
 
 /**
@@ -167,8 +170,11 @@ async function fetchImplementationName(address, chainId, retryCount = 0) {
     
     const data = await response.json()
     
-    // Check for rate limit
-    if (data.status === '0' && data.message === 'NOTOK' && retryCount < MAX_RETRIES) {
+    // Retry only on rate limiting. A "not verified" / invalid-address response is
+    // also status 0 and must not trigger three backed-off retries.
+    const errorText = `${data.result || ''} ${data.message || ''}`.toLowerCase()
+    const isRateLimited = errorText.includes('rate limit') || errorText.includes('too many')
+    if (data.status === '0' && isRateLimited && retryCount < MAX_RETRIES) {
       await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (retryCount + 1)))
       return fetchImplementationName(address, chainId, retryCount + 1)
     }

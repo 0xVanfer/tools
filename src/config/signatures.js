@@ -79,11 +79,14 @@ export const COMMON_SIGNATURES = {
   '0xf305d719': 'addLiquidityETH(address,uint256,uint256,uint256,address,uint256)',
   '0xbaa2abde': 'removeLiquidity(address,address,uint256,uint256,uint256,address,uint256)',
   
-  // Uniswap V3 Router
+  // Uniswap V3 SwapRouter (V1: deadline is part of the struct)
   '0x04e45aaf': 'exactInputSingle((address,address,uint24,address,uint256,uint256,uint160))',
-  '0xc04b8d59': 'exactInput((bytes,address,uint256,uint256))',
+  '0xc04b8d59': 'exactInput((bytes,address,uint256,uint256,uint256))',
   '0x5023b4df': 'exactOutputSingle((address,address,uint24,address,uint256,uint256,uint160))',
-  '0xf28c0498': 'exactOutput((bytes,address,uint256,uint256))',
+  '0xf28c0498': 'exactOutput((bytes,address,uint256,uint256,uint256))',
+  // Uniswap V3 SwapRouter02 (no deadline in the struct)
+  '0xb858183f': 'exactInput((bytes,address,uint256,uint256))',
+  '0x09b81346': 'exactOutput((bytes,address,uint256,uint256))',
   
   // Common DeFi
   '0xb6b55f25': 'deposit(uint256)',

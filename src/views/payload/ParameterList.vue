@@ -66,8 +66,27 @@
                                     → {{ param.decodedArray[i].signature }}
                                     <button type="button" class="copy-btn raw-copy" @click="copy(item)">copy raw data</button>
                                 </div>
+                                <!-- Nested Safe / multicall results have transactions/calls, not params -->
+                                <template v-if="param.decodedArray[i].transactions?.length">
+                                    <SafeTransactionCard
+                                        v-for="(t, ti) in param.decodedArray[i].transactions"
+                                        :key="'st-' + ti"
+                                        :transaction="t"
+                                        :index="ti"
+                                        :chain-id="chainId"
+                                    />
+                                </template>
+                                <template v-else-if="param.decodedArray[i].calls?.length">
+                                    <MulticallCard
+                                        v-for="(c, ci) in param.decodedArray[i].calls"
+                                        :key="'mc-' + ci"
+                                        :call="c"
+                                        :index="ci"
+                                        :chain-id="chainId"
+                                    />
+                                </template>
                                 <ParameterList
-                                    v-if="param.decodedArray[i].params?.length"
+                                    v-else-if="param.decodedArray[i].params?.length"
                                     :params="param.decodedArray[i].params"
                                     :chain-id="chainId"
                                     :depth="depth + 1"
@@ -157,7 +176,27 @@
                             → {{ param.decoded.signature }}
                             <button type="button" class="copy-btn raw-copy" @click="copy(param.value)">copy raw data</button>
                         </div>
-                        <ParameterList v-if="param.decoded.params?.length" :params="param.decoded.params" :chain-id="chainId" :depth="depth + 1" />
+                        <!-- Nested Safe / multicall results have transactions/calls, not params,
+                             so rendering only `.params` used to show an empty arrow row. -->
+                        <template v-if="param.decoded.transactions?.length">
+                            <SafeTransactionCard
+                                v-for="(t, ti) in param.decoded.transactions"
+                                :key="'st-' + ti"
+                                :transaction="t"
+                                :index="ti"
+                                :chain-id="chainId"
+                            />
+                        </template>
+                        <template v-else-if="param.decoded.calls?.length">
+                            <MulticallCard
+                                v-for="(c, ci) in param.decoded.calls"
+                                :key="'mc-' + ci"
+                                :call="c"
+                                :index="ci"
+                                :chain-id="chainId"
+                            />
+                        </template>
+                        <ParameterList v-else-if="param.decoded.params?.length" :params="param.decoded.params" :chain-id="chainId" :depth="depth + 1" />
                     </div>
                 </template>
 
@@ -215,7 +254,13 @@
 </template>
 
 <script setup>
+import { defineAsyncComponent } from "vue";
 import { useAddressDisplay, isAddress as isValidAddr } from "@/composables";
+
+// Nested Safe / multicall rendering. Loaded lazily because those components
+// import this one, and a static circular import can trip module initialization.
+const SafeTransactionCard = defineAsyncComponent(() => import("./SafeTransactionCard.vue"));
+const MulticallCard = defineAsyncComponent(() => import("./MulticallCard.vue"));
 
 const props = defineProps({
     params: { type: Array, required: true },

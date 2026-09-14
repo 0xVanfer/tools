@@ -14,6 +14,8 @@
                             {{ isConverting ? "pending..." : "Convert" }}
                         </button>
 
+                        <div v-if="error" class="alert alert-error mt-3">{{ error }}</div>
+
                         <div class="info-log mt-6">
                             <p>Your addresses will be recognized automatically.</p>
                             <p>For example, the input can be:</p>
@@ -70,70 +72,95 @@
 <script setup>
 import { ref } from "vue";
 import { PageHeader, CopyButton, EmptyState } from "@/components";
+import { getEthersSafe, toChecksumAddress } from "@/utils/ethereum";
 
 const inputText = ref("");
 const results = ref([]);
 const isConverting = ref(false);
+const error = ref("");
 
 /**
  * Find all addresses in input and convert to checksum format
+ *
+ * Requires a non-hex boundary after the address so the first 40 hex characters of
+ * a longer hex string (e.g. a 32-byte tx hash) are not mistaken for an address.
+ *
  * @param {string} input - Input string to search for addresses
- * @returns {Array<{checksum: string, lowercase: string}>} - Array of address objects
+ * @returns {{addresses: Array<{checksum: string, lowercase: string}>, invalid: number, skippedDuplicates: number}}
  */
 const findAddressesAndChecksum = (input) => {
+    const ethers = getEthersSafe();
+    if (!ethers) {
+        throw new Error("ethers.js is not loaded — checksum conversion is unavailable");
+    }
+
     const addresses = [];
+    const seen = new Set();
+    let invalid = 0;
+    let skippedDuplicates = 0;
     let start = 0;
 
     while ((start = input.indexOf("0x", start)) !== -1) {
         const address = input.substring(start, start + 42);
+        const trailing = input[start + 42];
 
-        if (address.length < 42) {
+        // Reject when the match continues as hex (longer hex string / calldata).
+        if (address.length < 42 || /[a-fA-F0-9]/.test(trailing || "")) {
             start += 2;
             continue;
         }
 
-        // Validate address format
         if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
             start += 2;
             continue;
         }
 
         try {
-            // Use ethers from global scope (loaded via CDN)
-            const ethers = window.ethers;
-            if (!ethers) {
-                start += 2;
-                continue;
+            // ethers validates an existing EIP-55 checksum and throws when it is wrong.
+            const checksummed = toChecksumAddress(address);
+            const lowercase = checksummed.toLowerCase();
+            if (seen.has(lowercase)) {
+                skippedDuplicates++;
+            } else {
+                seen.add(lowercase);
+                addresses.push({ checksum: checksummed, lowercase });
             }
-            const checksummed = ethers.utils.getAddress(address);
-            addresses.push({
-                checksum: checksummed,
-                lowercase: checksummed.toLowerCase(),
-            });
-        } catch (error) {
-            start += 2;
-            continue;
+        } catch {
+            // Mixed-case address with an invalid checksum.
+            invalid++;
         }
 
         start += 2;
     }
 
-    return addresses;
+    return { addresses, invalid, skippedDuplicates };
 };
 
 const convert = () => {
     isConverting.value = true;
+    error.value = "";
 
     try {
-        const foundAddresses = findAddressesAndChecksum(inputText.value);
+        const { addresses: foundAddresses, invalid, skippedDuplicates } =
+            findAddressesAndChecksum(inputText.value);
 
-        // Append new results (like the original)
         if (foundAddresses.length > 0) {
             results.value = [...results.value, ...foundAddresses];
-        }
+            // Only clear the input when something was actually converted, so a bad
+            // paste is not silently lost.
+            inputText.value = "";
 
-        // Clear input after conversion (like the original)
-        inputText.value = "";
+            const notes = [];
+            if (invalid > 0) notes.push(`${invalid} address(es) skipped (invalid checksum)`);
+            if (skippedDuplicates > 0) notes.push(`${skippedDuplicates} duplicate(s) skipped`);
+            if (notes.length > 0) error.value = notes.join("; ");
+        } else {
+            error.value = invalid > 0
+                ? `No valid addresses found (${invalid} address(es) had an invalid checksum)`
+                : "No valid addresses found in the input";
+        }
+    } catch (e) {
+        error.value = e.message;
     } finally {
         isConverting.value = false;
     }
@@ -141,6 +168,7 @@ const convert = () => {
 
 const clearResults = () => {
     results.value = [];
+    error.value = "";
 };
 </script>
 

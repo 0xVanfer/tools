@@ -79,10 +79,31 @@ const sections = [
 // Initialize expanded state from sections
 const expandedSections = reactive(Object.fromEntries(sections.map((s) => [s.title, s.defaultExpanded])));
 
+// Theme + sidebar state go through the settings store so they show up in the
+// Cache Manager (the old raw `eth-tools-*` keys were invisible to it).
+const THEME_KEY = "theme";
+const SIDEBAR_KEY = "sidebar-state";
+
+function readSetting(key) {
+    try {
+        const entry = settingsStore.get(key);
+        return entry?.value !== undefined ? entry.value : entry;
+    } catch {
+        return null;
+    }
+}
+
+function writeSetting(key, value) {
+    try {
+        settingsStore.set(key, { value });
+    } catch {
+        // Settings persistence is best effort.
+    }
+}
+
 const toggleSection = (title) => {
     expandedSections[title] = !expandedSections[title];
-    // Save to localStorage
-    localStorage.setItem("eth-tools-sidebar-state", JSON.stringify(expandedSections));
+    writeSetting(SIDEBAR_KEY, { ...expandedSections });
 };
 
 const isDark = ref(false);
@@ -90,21 +111,36 @@ const isDark = ref(false);
 const toggleTheme = () => {
     isDark.value = !isDark.value;
     document.documentElement.setAttribute("data-theme", isDark.value ? "dark" : "light");
-    localStorage.setItem("eth-tools-theme", isDark.value ? "dark" : "light");
+    writeSetting(THEME_KEY, isDark.value ? "dark" : "light");
 };
 
 onMounted(() => {
-    // Load saved sidebar state
-    const savedSidebarState = localStorage.getItem("eth-tools-sidebar-state");
-    if (savedSidebarState) {
-        try {
-            const parsed = JSON.parse(savedSidebarState);
-            Object.assign(expandedSections, parsed);
-        } catch {}
+    // Load saved sidebar state (migrating the legacy raw key once)
+    let savedSidebarState = readSetting(SIDEBAR_KEY);
+    if (!savedSidebarState) {
+        const legacy = localStorage.getItem("eth-tools-sidebar-state");
+        if (legacy) {
+            try {
+                savedSidebarState = JSON.parse(legacy);
+                writeSetting(SIDEBAR_KEY, savedSidebarState);
+                localStorage.removeItem("eth-tools-sidebar-state");
+            } catch {}
+        }
+    }
+    if (savedSidebarState && typeof savedSidebarState === "object") {
+        Object.assign(expandedSections, savedSidebarState);
     }
 
-    // Load theme
-    const savedTheme = localStorage.getItem("eth-tools-theme");
+    // Load theme (migrating the legacy raw key once)
+    let savedTheme = readSetting(THEME_KEY);
+    if (savedTheme === null || savedTheme === undefined) {
+        const legacy = localStorage.getItem("eth-tools-theme");
+        if (legacy) {
+            savedTheme = legacy;
+            writeSetting(THEME_KEY, legacy);
+            localStorage.removeItem("eth-tools-theme");
+        }
+    }
     if (savedTheme === "dark" || (!savedTheme && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
         isDark.value = true;
         document.documentElement.setAttribute("data-theme", "dark");

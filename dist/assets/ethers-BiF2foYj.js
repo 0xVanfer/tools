@@ -1,1 +1,0 @@
-function r(){if(typeof window<"u"&&window.ethers)return window.ethers;throw new Error("ethers.js not loaded")}function n(e){const t=r();return new t.utils.Interface(e)}function s(e){const t=r();return typeof e=="string"&&!e.startsWith("0x")?t.utils.id(e):t.utils.keccak256(e)}export{n as c,r as g,s as k};

@@ -224,6 +224,10 @@ export function decodeResult(returnData, signature, outputTypes) {
     
     // Fallback to defaultAbiCoder for simpler cases
     try {
+      // NOTE: `ethers` is not in scope here — it must be fetched from the globals,
+      // otherwise this fallback always threw a ReferenceError and silently
+      // returned null.
+      const ethers = getEthers()
       const decoded = ethers.utils.defaultAbiCoder.decode(types, returnData)
       const result = []
       for (let i = 0; i < decoded.length; i++) {

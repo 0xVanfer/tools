@@ -43,13 +43,15 @@ export const MULTICALL_SELECTORS = {
     type: 'aggregate'
   },
   // Multicall with previous blockhash: multicall(bytes32,bytes[])
-  '0x1c0464c1': {
+  '0x1f0464d1': {
     name: 'multicall',
     signature: 'multicall(bytes32,bytes[])',
     type: 'with-hash'
   },
-  // Aggregate with strict mode
-  '0x8a6a1e85': {
+  // Aggregate with strict mode: aggregate((address,bytes)[],bool)
+  // NOTE: selector verified against OpenChain/4byte — 0x17352e13 is this function,
+  // 0x8a6a1e85 is `collectSlippage(address,address,uint256)` and must not be here.
+  '0x17352e13': {
     name: 'aggregate',
     signature: 'aggregate((address,bytes)[],bool)',
     type: 'aggregate-strict'
@@ -136,12 +138,13 @@ export function parseMulticall(payload) {
 
 /**
  * Known Safe MultiSend contract addresses
+ * (labels follow safe-deployments: v1.3.0 / v1.4.1 and their CallOnly variants)
  */
 export const SAFE_MULTISEND_ADDRESSES = [
-  '0x9641d764fc13c8b624c04430c7356c1c7c8102e2', // MultiSend 1.3.0
+  '0xa238cbeb142c10ef7ad8442c6d1f9e89e07e7761', // MultiSend 1.3.0
   '0x40a2accbd92bca938b02010e17a5b8929b49130d', // MultiSend Call Only 1.3.0
-  '0xa238cbeb142c10ef7ad8442c6d1f9e89e07e7761', // MultiSend 1.4.1
-  '0x38869bf66a61cf6bdb996a6ae40d5853fd43b526', // MultiSend Call Only 1.4.1
+  '0x38869bf66a61cf6bdb996a6ae40d5853fd43b526', // MultiSend 1.4.1
+  '0x9641d764fc13c8b624c04430c7356c1c7c8102e2', // MultiSend Call Only 1.4.1
 ]
 
 /**
@@ -250,6 +253,14 @@ export function parseMultiSendPackedBytes(packedBytes) {
       value,
       data
     })
+  }
+  
+  // Leftover bytes mean the packed payload is truncated/corrupt. Returning a
+  // partial list silently would misrepresent the transaction as complete.
+  if (hexStr.length > 0) {
+    throw new Error(
+      `Malformed multiSend payload: ${Math.ceil(hexStr.length / 2)} trailing byte(s) could not be parsed`
+    )
   }
   
   return transactions
@@ -522,8 +533,8 @@ export async function findAndDecodeNestedBytes(params, depth = 0, maxDepth = 3, 
         }
       }
     }
-    // Case 3: tuple type containing bytes
-    else if (paramType.startsWith('tuple')) {
+    // Case 3: tuple type containing bytes (non-array)
+    else if (paramType.startsWith('tuple') && !paramType.endsWith('[]')) {
       const tupleComponents = param.components || parseTupleValue(paramValue, paramType)
       if (Array.isArray(tupleComponents)) {
         let componentsToDecode = tupleComponents
@@ -542,20 +553,31 @@ export async function findAndDecodeNestedBytes(params, depth = 0, maxDepth = 3, 
       }
     }
     // Case 4: tuple[] type
-    else if (paramType.includes('tuple') && paramType.endsWith('[]')) {
-      const values = Array.isArray(paramValue) ? paramValue : tryParseJSON(paramValue)
-      if (Array.isArray(values)) {
-        const decodedTuples = []
-        for (const tupleVal of values) {
-          const components = parseSingleTuple(tupleVal, splitTupleTypes(paramType.match(/tuple\((.+)\)/)?.[1] || ''))
-          if (components) {
-            const decoded = await findAndDecodeNestedBytes(components, depth, maxDepth, parentFunctionName)
-            decodedTuples.push(decoded)
-          } else {
-            decodedTuples.push(null)
-          }
+    // NOTE: this must come after the guard above excludes arrays; previously the
+    // `startsWith('tuple')` branch swallowed tuple arrays and handed the param
+    // loop an array-of-arrays, so nested calldata inside tuples was never decoded.
+    else if (paramType.startsWith('tuple') && paramType.endsWith('[]')) {
+      // The decoder pre-builds one component array per item in `itemComponents`.
+      let tupleItems = Array.isArray(param.itemComponents) ? param.itemComponents : null
+
+      if (!tupleItems) {
+        const values = Array.isArray(paramValue) ? paramValue : tryParseJSON(paramValue)
+        if (Array.isArray(values)) {
+          const innerTypes = splitTupleTypes(paramType.match(/tuple\((.*)\)\[\]$/)?.[1] || '')
+          tupleItems = values.map((tupleVal) => parseSingleTuple(tupleVal, innerTypes))
         }
-        if (decodedTuples.some(d => d !== null)) {
+      }
+
+      if (Array.isArray(tupleItems)) {
+        const decodedTuples = []
+        for (const components of tupleItems) {
+          if (!Array.isArray(components)) {
+            decodedTuples.push(null)
+            continue
+          }
+          decodedTuples.push(await findAndDecodeNestedBytes(components, depth, maxDepth, parentFunctionName))
+        }
+        if (decodedTuples.some((d) => d !== null)) {
           result.decodedTuples = decodedTuples
         }
       }
@@ -598,7 +620,12 @@ function getFullAbiType(input) {
   
   if (input.baseType === 'array' || (input.baseType && input.baseType.endsWith('[]'))) {
     if (input.arrayChildren) {
-      return getFullAbiType(input.arrayChildren) + '[]'
+      // Preserve fixed-size arrays (e.g. uint256[3]) instead of flattening to [].
+      const suffix =
+        input.arrayLength && Number(input.arrayLength) > 0
+          ? `[${input.arrayLength}]`
+          : '[]'
+      return getFullAbiType(input.arrayChildren) + suffix
     }
     return input.type
   }
@@ -816,7 +843,14 @@ export async function decodePayload(payload, options = {}) {
   const selector = getSelector(payload)
   
   // 1. Check for Safe transactions
-  const safeResult = processSafePayload(payload)
+  // Malformed Safe payloads (e.g. a truncated packed multiSend) must surface as a
+  // structured error instead of rejecting the whole decode.
+  let safeResult = null
+  try {
+    safeResult = processSafePayload(payload)
+  } catch (e) {
+    return { selector, error: `Failed to parse Safe transaction: ${e.message}` }
+  }
   if (safeResult) {
     // Decode each inner transaction
     const decodedTransactions = []
@@ -852,7 +886,12 @@ export async function decodePayload(payload, options = {}) {
   
   // 2. Check for multicall
   if (isMulticall(payload)) {
-    const multicallResult = parseMulticall(payload)
+    let multicallResult
+    try {
+      multicallResult = parseMulticall(payload)
+    } catch (e) {
+      return { selector, error: `Failed to parse multicall: ${e.message}` }
+    }
     const multicallInfo = getMulticallInfo(selector)
     
     // Decode each inner call

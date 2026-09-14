@@ -185,7 +185,7 @@
                             <input type="checkbox" v-model="editVnetDefault" />
                             <span>Show in VNet dropdown by default</span>
                         </label>
-                        <small class="text-muted">Addresses marked as VNet default will appear in the VNet Reader address selector</small>
+                        <small class="text-muted">Addresses marked as default will appear in the Contract Reader address selector</small>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -245,10 +245,8 @@ import { CopyButton } from "@/components";
 import {
     getAllCachedAddresses,
     getCacheStats,
-    setCustomName,
     removeCachedAddress,
     clearCache,
-    exportCache,
     importCache,
     CacheTypes,
     CacheTypeMeta,
@@ -452,6 +450,7 @@ const handleAddAddress = () => {
     }
 
     try {
+        isAddingAddress.value = true;
         const normalizedAddress = toChecksumAddress(address);
         const data = {
             customName,
@@ -478,6 +477,8 @@ const handleAddAddress = () => {
     } catch (err) {
         addStatus.value = `Error: ${err.message}`;
         addStatusType.value = "error";
+    } finally {
+        isAddingAddress.value = false;
     }
 };
 

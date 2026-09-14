@@ -20,12 +20,12 @@
                                 https://dashboard.tenderly.co/explorer/vnet/{id}/tx/0x...
                             </div>
                             <div class="format-item">
-                                <span class="badge">Tenderly VNet List</span>
-                                https://dashboard.tenderly.co/explorer/vnet/{id}/transactions
+                                <span class="badge">Tenderly Shared Sim</span>
+                                https://www.tdly.co/shared/simulation/{id}
                             </div>
                             <div class="format-item">
-                                <span class="badge">Tenderly Simulation</span>
-                                https://dashboard.tenderly.co/public/{account}/{project}/simulator/{id}
+                                <span class="badge">Tenderly Tx</span>
+                                https://dashboard.tenderly.co/tx/{network}/0x...
                             </div>
                             <div class="format-item">
                                 <span class="badge">Safe</span>
@@ -93,6 +93,12 @@
             <div v-if="error" class="alert alert-error mt-4">
                 <span>⚠️</span>
                 <span>{{ error }}</span>
+            </div>
+
+            <!-- Decode Error (empty / undecodable payload) -->
+            <div v-if="decoded && decoded.error" class="alert alert-error mt-4">
+                <span>⚠️</span>
+                <span>{{ decoded.error }}</span>
             </div>
 
             <!-- Transaction Info (from URL) -->
@@ -282,7 +288,6 @@ const parseError = ref(null);
 // Parsed data from URL
 const parsedTxInfo = ref(null);
 const vnetRpcUrl = ref(null);
-const vnetId = ref(null);
 const currentChainId = ref("1");
 
 // Use shared address display utilities - THE SINGLE SOURCE OF TRUTH
@@ -491,7 +496,6 @@ const onInputChange = () => {
         parsedTxInfo.value = null;
         multiplePayloads.value = [];
         vnetRpcUrl.value = null;
-        vnetId.value = null;
     }
 };
 
@@ -530,10 +534,15 @@ const decode = async () => {
             // Still capture vnet info for the button
             if (parseResult.vnetRpcUrl) {
                 vnetRpcUrl.value = parseResult.vnetRpcUrl;
-                vnetId.value = parseResult.vnetId;
+            }
+            if (parseResult.chainId) {
+                currentChainId.value = String(parseResult.chainId);
             }
 
-            throw new Error(parseResult.error);
+            // Stop here: `parseError` is already rendered, and throwing would set
+            // the shared loading `error` too (duplicate alert) and reject the
+            // debounced/paste callers.
+            return;
         }
 
         // Update chain and vnet info
@@ -548,7 +557,6 @@ const decode = async () => {
         }
         if (parseResult.vnetRpcUrl) {
             vnetRpcUrl.value = parseResult.vnetRpcUrl;
-            vnetId.value = parseResult.vnetId;
         }
 
         // Handle multiple payloads
@@ -650,12 +658,6 @@ const formatEthValue = (value) => {
     }
 };
 
-const jsonReplacer = (key, value) => {
-    if (typeof value === "bigint") {
-        return value.toString();
-    }
-    return value;
-};
 </script>
 
 <style scoped>

@@ -106,6 +106,13 @@ contract MyContract {
                 <button class="btn btn-secondary btn-sm ml-auto" @click="error = null">Dismiss</button>
             </div>
 
+            <!-- Warning Display (partial results) -->
+            <div v-if="warning" class="alert alert-warning mt-4">
+                <span>⚠️</span>
+                <span>{{ warning }}</span>
+                <button class="btn btn-secondary btn-sm ml-auto" @click="warning = null">Dismiss</button>
+            </div>
+
             <!-- Proxy Info Banner -->
             <div v-if="proxyInfo" class="proxy-banner mt-4">
                 <span class="proxy-icon">🔗</span>
@@ -280,11 +287,11 @@ contract MyContract {
 </template>
 
 <script setup>
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onUnmounted } from "vue";
 import { PageHeader, CopyButton, LoadingSpinner, EmptyState, SearchInput } from "@/components";
 import { useClipboard } from "@/composables";
 import { processFiles } from "@/utils/solidityParser";
-import { parseRepoUrl, fetchGitHubTree, fetchGitHubFile, fetchGitLabTree, fetchEtherscanSource, getProxyImplementation } from "@/utils/api";
+import { parseRepoUrl, fetchGitHubTree, fetchGitHubFile, fetchGitLabTree, fetchEtherscanSource } from "@/utils/api";
 
 const { copy } = useClipboard();
 
@@ -310,7 +317,9 @@ const loadingBranches = ref(false);
 // Loading state
 const loading = ref(false);
 const error = ref(null);
+const warning = ref(null);
 const progress = ref(null);
+let progressTimer = null;
 
 // Proxy detection
 const proxyInfo = ref(null);
@@ -318,7 +327,19 @@ const proxyInfo = ref(null);
 // Result state
 const signatures = ref([]);
 const stats = ref({ functions: 0, errors: 0, files: 0 });
+const fetchFailures = ref(0);
 const resultTab = ref("signatures");
+
+/**
+ * Decide whether a repository path holds production Solidity sources.
+ * Segment-aware so a legitimate path such as `contracts/latest/Token.sol`
+ * (which contains the substring "test/") is not dropped.
+ */
+function isSoliditySourcePath(path) {
+    if (!path || !path.endsWith(".sol")) return false;
+    if (path.endsWith(".t.sol")) return false;
+    return !/(^|\/)(test|tests|mock|mocks|scripts?)\//.test(path);
+}
 
 // Filters
 const searchQuery = ref("");
@@ -420,12 +441,18 @@ function setExample(url) {
 
 // Debounced URL change handler for branch loading
 let urlChangeTimeout = null;
+let branchRequestId = 0;
 function onUrlChange() {
     clearTimeout(urlChangeTimeout);
     branches.value = [];
     tokenRequired.value = false;
 
     const parsed = parseRepoUrl(inputUrl.value);
+    // Reset the branch to the one named in the new URL, otherwise a branch picked
+    // for the previous repository leaks into this one.
+    selectedBranch.value = parsed?.branchSpecified ? parsed.branch : "";
+    branchRequestId++;
+
     if (parsed && (parsed.platform === "github" || parsed.platform === "gitlab")) {
         urlChangeTimeout = setTimeout(loadBranches, 500);
     }
@@ -438,10 +465,13 @@ async function loadBranches() {
     const parsed = parseRepoUrl(url);
     if (!parsed || parsed.platform === "etherscan") return;
 
+    const requestId = ++branchRequestId;
     loadingBranches.value = true;
     tokenRequired.value = false;
 
     try {
+        let names = [];
+
         if (parsed.platform === "github") {
             const headers = { Accept: "application/vnd.github.v3+json" };
             if (accessToken.value) {
@@ -451,13 +481,8 @@ async function loadBranches() {
             if (!response.ok) {
                 throw new Error("GitHub API error: " + response.status);
             }
-            if (response.ok) {
-                const data = await response.json();
-                branches.value = data.map((b) => b.name);
-                if (branches.value.length > 0 && !branches.value.includes(selectedBranch.value)) {
-                    selectedBranch.value = branches.value[0];
-                }
-            }
+            const data = await response.json();
+            names = data.map((b) => b.name);
         } else if (parsed.platform === "gitlab") {
             const projectId = encodeURIComponent(parsed.projectPath);
             const headers = {};
@@ -468,21 +493,30 @@ async function loadBranches() {
             if (!response.ok) {
                 throw new Error("GitLab API error: " + response.status);
             }
-            if (response.ok) {
-                const data = await response.json();
-                branches.value = data.map((b) => b.name);
-                if (branches.value.length > 0 && !branches.value.includes(selectedBranch.value)) {
-                    selectedBranch.value = branches.value[0];
-                }
-            }
+            const data = await response.json();
+            names = data.map((b) => b.name);
+        }
+
+        // Ignore responses from a superseded request (fast typing / token change).
+        if (requestId !== branchRequestId) return;
+
+        branches.value = names;
+        if (names.length > 0 && !names.includes(selectedBranch.value)) {
+            selectedBranch.value = parsed.branchSpecified && names.includes(parsed.branch)
+                ? parsed.branch
+                : names[0];
         }
     } catch (e) {
-        console.warn("Failed to load branches:", e);
-        if (isAuthError(e) && !accessToken.value.trim()) {
-            tokenRequired.value = true;
+        if (requestId === branchRequestId) {
+            console.warn("Failed to load branches:", e);
+            if (isAuthError(e) && !accessToken.value.trim()) {
+                tokenRequired.value = true;
+            }
         }
     } finally {
-        loadingBranches.value = false;
+        if (requestId === branchRequestId) {
+            loadingBranches.value = false;
+        }
     }
 }
 
@@ -490,9 +524,20 @@ async function extract() {
     const url = inputUrl.value.trim();
     if (!url) return;
 
+    // Guard against overlapping runs (the Enter key bypasses the disabled
+    // button), which used to let a slower earlier response overwrite results.
+    if (loading.value) return;
+
+    if (progressTimer) {
+        clearTimeout(progressTimer);
+        progressTimer = null;
+    }
+
     loading.value = true;
     error.value = null;
+    warning.value = null;
     tokenRequired.value = false;
+    fetchFailures.value = 0;
     signatures.value = [];
     stats.value = { functions: 0, errors: 0, files: 0 };
     proxyInfo.value = null;
@@ -516,7 +561,11 @@ async function extract() {
         }
 
         if (files.length === 0) {
-            throw new Error("No Solidity files found");
+            throw new Error(
+                fetchFailures.value > 0
+                    ? `Failed to download any Solidity files (${fetchFailures.value} request(s) failed)`
+                    : "No Solidity files found"
+            );
         }
 
         progress.value = { percent: 80, message: "Parsing signatures..." };
@@ -529,9 +578,14 @@ async function extract() {
             files: files.length,
         };
 
+        if (fetchFailures.value > 0) {
+            warning.value = `${fetchFailures.value} file(s) could not be downloaded and were skipped; results are partial.`;
+        }
+
         progress.value = { percent: 100, message: "Done!" };
-        setTimeout(() => {
+        progressTimer = setTimeout(() => {
             progress.value = null;
+            progressTimer = null;
         }, 1000);
     } catch (e) {
         error.value = e.message;
@@ -561,7 +615,7 @@ async function extractFromGitHub(parsed, files) {
 
     const branch = selectedBranch.value || parsed.branch || "main";
     const tree = await fetchGitHubTree(parsed.owner, parsed.repo, branch, accessToken.value || null);
-    const solFiles = tree.tree.filter((f) => f.path.endsWith(".sol") && !f.path.includes(".t.sol") && !f.path.includes("test/") && !f.path.includes("mock/"));
+    const solFiles = tree.tree.filter((f) => isSoliditySourcePath(f.path));
 
     if (solFiles.length === 0) {
         throw new Error("No Solidity files found in repository");
@@ -578,6 +632,7 @@ async function extractFromGitHub(parsed, files) {
                 const content = await fetchGitHubFile(parsed.owner, parsed.repo, file.path, branch, accessToken.value || null);
                 return { path: file.path, content };
             } catch {
+                fetchFailures.value++;
                 return null;
             }
         });
@@ -595,7 +650,7 @@ async function extractFromGitLab(parsed, files) {
 
     const branch = selectedBranch.value || parsed.branch || "main";
     const tree = await fetchGitLabTree(parsed.host, parsed.projectPath, branch, accessToken.value || null);
-    const solFiles = tree.filter((f) => f.path.endsWith(".sol") && !f.path.includes(".t.sol") && !f.path.includes("test/") && !f.path.includes("mock/"));
+    const solFiles = tree.filter((f) => isSoliditySourcePath(f.path));
 
     if (solFiles.length === 0) {
         throw new Error("No Solidity files found in GitLab repository");
@@ -614,13 +669,17 @@ async function extractFromGitLab(parsed, files) {
                 if (accessToken.value) {
                     headers["PRIVATE-TOKEN"] = accessToken.value;
                 }
-                const response = await fetch(parsed.host + "/api/v4/projects/" + projectId + "/repository/files/" + filePath + "/raw?ref=" + branch, {
+                const response = await fetch(parsed.host + "/api/v4/projects/" + projectId + "/repository/files/" + filePath + "/raw?ref=" + encodeURIComponent(branch), {
                     headers,
                 });
-                if (!response.ok) return null;
+                if (!response.ok) {
+                    fetchFailures.value++;
+                    return null;
+                }
                 const content = await response.text();
                 return { path: file.path, content };
             } catch {
+                fetchFailures.value++;
                 return null;
             }
         });
@@ -638,20 +697,20 @@ async function extractFromEtherscan(parsed, files) {
 
     console.log("[SignatureExtractor] Etherscan parsed:", parsed);
 
-    // Check for proxy
-    const implementation = await getProxyImplementation(parsed.chainId, parsed.address);
+    // Fetch the source once. Previously the proxy check fetched it and then the
+    // non-proxy path fetched the same endpoint again.
+    const sourceResult = await fetchEtherscanSource(parsed.chainId, parsed.address);
 
-    let sourceResult;
-
-    if (implementation) {
+    const implementation = sourceResult?.Implementation;
+    if (implementation && /^0x[a-fA-F0-9]{40}$/i.test(implementation)) {
         proxyInfo.value = {
             proxyAddress: parsed.address,
             implementationAddress: implementation,
         };
         progress.value = { percent: 40, message: "Fetching implementation source..." };
-        sourceResult = await fetchEtherscanSource(parsed.chainId, implementation);
-    } else {
-        sourceResult = await fetchEtherscanSource(parsed.chainId, parsed.address);
+        const implResult = await fetchEtherscanSource(parsed.chainId, implementation);
+        files.push(...parseEtherscanSource(implResult, implResult.ContractName || "Implementation"));
+        return;
     }
 
     progress.value = { percent: 60, message: "Parsing source files..." };
@@ -660,12 +719,21 @@ async function extractFromEtherscan(parsed, files) {
 
 function parseEtherscanSource(sourceResult, contractName) {
     const files = [];
-    let sourceCodeStr = sourceResult.SourceCode;
+    let sourceCodeStr = sourceResult?.SourceCode;
 
-    // Handle JSON format
+    // `SourceCode` may be absent while `ABI` is present, which used to throw on
+    // `.startsWith`. Treat it as an empty source instead.
+    if (typeof sourceCodeStr !== "string" || !sourceCodeStr.trim()) {
+        throw new Error("Contract source code is empty (only an ABI is available)");
+    }
+
+    // Handle the double-brace JSON wrapper Etherscan uses.
     if (sourceCodeStr.startsWith("{{")) {
         sourceCodeStr = sourceCodeStr.slice(1, -1);
     }
+
+    const trimmed = sourceCodeStr.trim();
+    const looksLikeJson = trimmed.startsWith("{") || trimmed.startsWith("[");
 
     try {
         const parsed = JSON.parse(sourceCodeStr);
@@ -686,9 +754,17 @@ function parseEtherscanSource(sourceResult, contractName) {
                 }
             }
         }
-    } catch {
-        // Single file
+    } catch (e) {
+        // A single flat source file is expected, but a malformed multi-file JSON
+        // payload must not be silently turned into one bogus pseudo-file.
+        if (looksLikeJson) {
+            throw new Error("Could not parse multi-file contract source: " + e.message);
+        }
         files.push({ path: contractName + ".sol", content: sourceCodeStr });
+    }
+
+    if (files.length === 0) {
+        throw new Error("No Solidity sources found in the contract source payload");
     }
 
     return files;
@@ -696,9 +772,16 @@ function parseEtherscanSource(sourceResult, contractName) {
 
 async function extractFromSource() {
     if (!sourceCode.value.trim()) return;
+    if (loading.value) return;
+
+    if (progressTimer) {
+        clearTimeout(progressTimer);
+        progressTimer = null;
+    }
 
     loading.value = true;
     error.value = null;
+    warning.value = null;
     signatures.value = [];
     stats.value = { functions: 0, errors: 0, files: 0 };
     proxyInfo.value = null;
@@ -716,8 +799,9 @@ async function extractFromSource() {
         };
 
         progress.value = { percent: 100, message: "Done!" };
-        setTimeout(() => {
+        progressTimer = setTimeout(() => {
             progress.value = null;
+            progressTimer = null;
         }, 1000);
     } catch (e) {
         error.value = e.message;
@@ -778,12 +862,46 @@ function formatABI(sigs) {
 }
 
 function parseInputsFromSignature(sig) {
-    const match = sig.match(/\(([^)]*)\)/);
-    if (!match || !match[1]) return [];
+    // Take the outermost parameter list. A greedy `[^)]*` match would stop at the
+    // first inner `)`, and splitting on every comma destroys tuple parameters.
+    const firstParen = sig.indexOf("(");
+    if (firstParen === -1) return [];
 
-    const types = match[1].split(",").filter(Boolean);
+    let depth = 0;
+    let end = -1;
+    for (let i = firstParen; i < sig.length; i++) {
+        if (sig[i] === "(") depth++;
+        else if (sig[i] === ")") {
+            depth--;
+            if (depth === 0) {
+                end = i;
+                break;
+            }
+        }
+    }
+    if (end === -1) return [];
+
+    const paramsStr = sig.slice(firstParen + 1, end);
+    if (!paramsStr.trim()) return [];
+
+    // Split on top-level commas only.
+    const types = [];
+    let current = "";
+    depth = 0;
+    for (const char of paramsStr) {
+        if (char === "(" || char === "[") depth++;
+        else if (char === ")" || char === "]") depth--;
+        if (char === "," && depth === 0) {
+            types.push(current.trim());
+            current = "";
+            continue;
+        }
+        current += char;
+    }
+    if (current.trim()) types.push(current.trim());
+
     return types.map((type, i) => ({
-        type: type.trim(),
+        type,
         name: "param" + i,
     }));
 }
@@ -844,8 +962,26 @@ async function uploadTo4byte() {
                         body: JSON.stringify({ text_signature: sig.signature }),
                     });
 
-                    if (response.ok || response.status === 400) {
+                    // Only 2xx counts as success. A 400 (already registered / rejected)
+                    // used to be reported as "Uploaded".
+                    if (response.ok) {
                         success++;
+                    } else if (response.status === 400) {
+                        // 4byte answers 400 when the signature already exists; treat
+                        // that as a no-op rather than a failure.
+                        let alreadyExists = false;
+                        try {
+                            const body = await response.json();
+                            const text = JSON.stringify(body).toLowerCase();
+                            alreadyExists = text.includes("already") || text.includes("exists") || text.includes("duplicate");
+                        } catch {
+                            alreadyExists = false;
+                        }
+                        if (alreadyExists) {
+                            success++;
+                        } else {
+                            failed++;
+                        }
                     } else {
                         failed++;
                     }
@@ -874,6 +1010,11 @@ async function uploadTo4byte() {
         uploading.value = false;
     }
 }
+
+onUnmounted(() => {
+    clearTimeout(urlChangeTimeout);
+    if (progressTimer) clearTimeout(progressTimer);
+});
 </script>
 
 <style scoped>

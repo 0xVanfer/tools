@@ -14,10 +14,11 @@
  * 0xcA11bde05977b3631167028862bE2a173976CA11
  */
 
-import { getEthers, createInterface } from './core/ethers.js'
+import { getEthersSafe, createInterface } from './core/ethers.js'
 import { 
   getAddressDisplayName, 
   getContractCache,
+  setContractCache,
   setSymbol
 } from './cacheManager.js'
 import { getRpcUrl } from './chains.js'
@@ -55,11 +56,19 @@ const ERC20_ABI = [
  * @param {string} address - The contract address
  * @returns {{symbol: string|null}|null}
  */
+// How long a failed symbol() lookup is remembered before retrying.
+const SYMBOL_NEGATIVE_TTL = 60 * 60 * 1000 // 1 hour
+
 function getFromCache(chainId, address) {
   const cached = getContractCache(address, String(chainId))
   if (cached?.symbol) {
     console.log('[contractInfo] Found in cache', { chainId, address, symbol: cached.symbol })
     return { symbol: cached.symbol }
+  }
+  // Negative cache: remember recently-failed lookups so non-ERC20 addresses do
+  // not trigger a fresh multicall on every decode.
+  if (cached?.symbolLookupFailedAt && Date.now() - cached.symbolLookupFailedAt < SYMBOL_NEGATIVE_TTL) {
+    return { symbol: null }
   }
   return null
 }
@@ -74,6 +83,8 @@ function saveToCache(chainId, address, info) {
   if (info.symbol) {
     setSymbol(address, info.symbol, chainId)
     console.log('[contractInfo] Saved to cache', { chainId, address, symbol: info.symbol })
+  } else {
+    setContractCache(address, { symbolLookupFailedAt: Date.now() }, String(chainId))
   }
 }
 
@@ -164,7 +175,9 @@ async function executeMulticall(rpcUrl, calls) {
  * @returns {Map<string, {symbol: string|null}>} Map of address -> ContractInfo
  */
 function parseMulticallResults(addresses, results) {
-  const ethers = getEthers()
+  // getEthers() throws when the CDN script failed to load; use the safe accessor
+  // so this guard is actually reachable.
+  const ethers = getEthersSafe()
   if (!ethers) return new Map()
   
   const infoMap = new Map()
